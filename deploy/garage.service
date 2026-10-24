@@ -1,0 +1,24 @@
+# Вариант без Docker: /opt/garage + nginx/caddy перед ним
+[Unit]
+Description=Garage (учёт машин)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=garage
+Group=garage
+WorkingDirectory=/opt/garage
+Environment=NODE_ENV=production TZ=Europe/Istanbul DATA_DIR=/var/lib/garage PORT=8080 HOST=127.0.0.1 TRUST_PROXY=1
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/garage
+StateDirectory=garage
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target
