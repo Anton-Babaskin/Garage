@@ -25,7 +25,7 @@ const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
 const COOKIE_SECURE = process.env.COOKIE_SECURE !== '0';
 const TRUST_PROXY = process.env.TRUST_PROXY !== '0';
-const SESSION_DAYS = Number(process.env.SESSION_DAYS || 180);
+const SESSION_DAYS = Number(process.env.SESSION_DAYS || 365);
 const BACKUP_KEEP = Number(process.env.BACKUP_KEEP || 60);
 const MAX_BODY = 4 * 1024 * 1024;
 
@@ -96,6 +96,17 @@ function setPin(id, pin) {
   for (const [k, s] of Object.entries(SESSIONS)) if (s.id === id) delete SESSIONS[k];
   saveSessions();
 }
+async function setPassword(id, password) {
+  const u = findUser(id); if (!u) throw new Error('Пользователь не найден.');
+  if (id === 'anton') throw new Error('Антон входит по PIN.');
+  if (typeof password !== 'string' || !password.length) throw new Error('Введите пароль.');
+  const salt = crypto.randomBytes(16).toString('hex');
+  PINS[id] = { salt, hash: hashPin(password, salt), len: u.len, password: true, at: new Date().toISOString() };
+  for (const [k, s] of Object.entries(SESSIONS)) if (s.id === id) delete SESSIONS[k];
+  clearTimeout(sessTimer);
+  await writeJSON('users.json', PINS);
+  await writeJSON('sessions.json', SESSIONS);
+}
 function randomPin(len) {
   for (;;) { let p = ''; for (let i = 0; i < len; i++) p += crypto.randomInt(0, 10); if (!/^(\d)\1+$/.test(p) && !'0123456789'.includes(p) && !'9876543210'.includes(p)) return p; }
 }
@@ -120,12 +131,13 @@ function newSession(id) {
   saveSessions(); return tok;
 }
 function cookies(req) { const o = {}; String(req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) o[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); }); return o; }
-function sessionOf(req) {
+function sessionOf(req, res) {
   const t = cookies(req).gsid; if (!t) return null;
   const k = tokenHash(t), s = SESSIONS[k]; if (!s) return null;
   if (s.exp < Date.now()) { delete SESSIONS[k]; saveSessions(); return null; }
   const u = findUser(s.id); if (!u) return null;
-  if (s.exp - Date.now() < (SESSION_DAYS - 7) * 864e5) { s.exp = Date.now() + SESSION_DAYS * 864e5; saveSessions(); }
+  s.exp = Date.now() + SESSION_DAYS * 864e5; saveSessions();
+  res.setHeader('Set-Cookie', cookie(t, SESSION_DAYS * 86400));
   return { key: k, user: u };
 }
 function cookie(tok, maxAge) {
@@ -233,20 +245,22 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/users') return send(res, 200, { users: userList() });
     if (req.method === 'POST' && p === '/api/login') {
       const b = await readBody(req), u = findUser(String(b.id || ''));
+      const invalid = u && u.id === 'anton' ? 'Неверный PIN.' : 'Неверный пароль.';
       if (limited('ip:' + ip, 30)) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
-      if (!u || !PINS[u.id]) { fail('ip:' + ip, 30); return send(res, 401, { error: 'Неверный PIN.' }); }
+      if (!u || !PINS[u.id]) { fail('ip:' + ip, 30); return send(res, 401, { error: invalid }); }
       if (limited('u:' + u.id, 5)) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
-      const rec = PINS[u.id], got = Buffer.from(hashPin(String(b.pin || ''), rec.salt), 'hex'), want = Buffer.from(rec.hash, 'hex');
+      const rec = PINS[u.id], secret = u.id === 'anton' ? String(b.pin || '') : typeof b.password === 'string' ? b.password : !rec.password ? String(b.pin || '') : '';
+      const got = Buffer.from(hashPin(secret, rec.salt), 'hex'), want = Buffer.from(rec.hash, 'hex');
       if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) {
         fail('ip:' + ip, 30); const locked = fail('u:' + u.id, 5);
         log('login fail', u.id, ip);
-        return send(res, locked ? 429 : 401, { error: locked ? 'Слишком много попыток. Подождите 15 минут.' : 'Неверный PIN.' });
+        return send(res, locked ? 429 : 401, { error: locked ? 'Слишком много попыток. Подождите 15 минут.' : invalid });
       }
       FAILS.delete('u:' + u.id);
       log('login ok', u.id, ip);
       return send(res, 200, { user: u }, { 'Set-Cookie': cookie(newSession(u.id), SESSION_DAYS * 86400) });
     }
-    const ses = sessionOf(req);
+    const ses = sessionOf(req, res);
     if (!ses && req.method === 'GET' && p === '/api/me') return send(res, 200, { user: null });
     if (!ses) return send(res, 401, { error: 'Войдите заново.' }, { 'Set-Cookie': cookie('', 0) });
     const me = ses.user;
@@ -270,6 +284,15 @@ const server = http.createServer(async (req, res) => {
       if (!me.mgr) return send(res, 403, { error: 'PIN меняет руководство.' });
       try { setPin(id, b.pin); log('pin set', id, 'by', me.id); return send(res, 200, { ok: true }); }
       catch (e) { return send(res, 422, { error: e.message }); }
+    }
+    if (req.method === 'POST' && p === '/api/password') {
+      const b = await readBody(req), id = String(b.id || '');
+      if (!me.mgr) return send(res, 403, { error: 'Пароль меняет руководство.' });
+      try {
+        await setPassword(id, b.password);
+        log('password set', id, 'by', me.id);
+        return send(res, 200, { ok: true }, id === me.id ? { 'Set-Cookie': cookie('', 0) } : {});
+      } catch (e) { return send(res, 422, { error: e.message }); }
     }
     if (req.method === 'GET' && p === '/api/backup') {
       if (!me.mgr) return send(res, 403, { error: 'Только для руководства.' });

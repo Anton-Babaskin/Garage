@@ -5,6 +5,7 @@
  */
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs'), path = require('path'), os = require('os'), vm = require('vm');
+const crypto = require('crypto');
 const ROOT = path.join(__dirname, '..');
 let fails = 0;
 const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails++; console.log('  ✗ ' + msg); } };
@@ -46,7 +47,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     const r = await fetch(B + p, { method: body ? 'POST' : 'GET', headers: h, body: body ? JSON.stringify(body) : undefined });
     const sc = r.headers.get('set-cookie'); if (sc && /gsid=[^;]+/.test(sc)) jar[who] = sc.match(/gsid=[^;]*/)[0];
     let j = null; try { j = await r.json(); } catch (e) {}
-    return { status: r.status, j };
+    return { status: r.status, j, cookie: sc || '' };
   };
   try {
     const page = await fetch(B + '/'); const html = await page.text();
@@ -68,11 +69,60 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok(r.status === 200 && F.project(r.j.state).cars.find(c => c.id === 'bmw').odo === 1040, 'руководство исправило пробег вручную');
     ok((await call('d', '/api/op', { op: 'transact', args: [{ kind: 'odo_fix', carId: 'bmw', odo: 5, note: 'x' }] })).status === 422, 'водитель не может исправить пробег');
     ok((await call('d', '/api/state?v=' + r.j.v)).j.same === true, 'опрос без изменений — пустой ответ');
+    console.log('5. Пароли и совместимость PIN (только временные тестовые данные)');
+    const year = 365 * 86400;
+    const renewed = await call('d', '/api/me');
+    ok(renewed.cookie.includes('Max-Age=' + year) && renewed.cookie.includes('HttpOnly') && renewed.cookie.includes('SameSite=Strict'), 'сессия и cookie на 365 дней, защита cookie сохранена');
+    ok((await call('d', '/api/state?v=' + r.j.v)).cookie.includes('Max-Age=' + year), 'cookie обновляется и при опросе без изменений');
+    const recordsBefore = JSON.parse(fs.readFileSync(path.join(dir, 'users.json'), 'utf8'));
+    const antonBefore = JSON.stringify(recordsBefore.anton);
+    const passwords = [
+      String(crypto.randomInt(0, 10)),
+      ' '.repeat(1),
+      String.fromCodePoint(0x15f, 0x438, 0x4e2d, 0x1f511),
+      String.fromCharCode(97 + crypto.randomInt(0, 26)).repeat(4),
+      ' ' + crypto.randomBytes(140).toString('hex') + ' ',
+      crypto.randomBytes(24).toString('base64url')
+    ];
+    const ids = ['d1', 'd2', 'd3', 'd4', 'manager', 'darya'];
+    ok((await call('d', '/api/password', { id: 'd2', password: passwords[0] })).status === 403, 'водитель не задаёт пароли');
+    ok((await call('a', '/api/password', { id: 'd2', password: '' })).status === 422, 'пустой пароль отклоняется');
+    ok((await call('a', '/api/password', { id: 'd2', password: 0 })).status === 422, 'пароль должен быть текстом');
+    ok((await call('a', '/api/password', { id: 'anton', password: passwords[0] })).status === 422, 'пароль Антону не назначается');
+    ok((await call('a', '/api/password', { id: 'missing', password: passwords[0] })).status === 422, 'несуществующему человеку пароль не назначается');
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i], oldPin = id === 'd1' ? '4826' : out.match(new RegExp('\\(' + id + '\\)\\s+(\\d+)'))[1];
+      ok((await call('old-' + id, '/api/login', { id, password: oldPin })).status === 200, id + ': старый PIN подходит в поле пароля до назначения');
+      ok((await call('second-' + id, '/api/login', { id, pin: oldPin })).status === 200, id + ': старый клиент входит по PIN до назначения');
+      ok((await call('a', '/api/password', { id, password: passwords[i] })).status === 200, id + ': любой непустой пароль сохраняется');
+      const oldOne = await call('old-' + id, '/api/me'), oldTwo = await call('second-' + id, '/api/state');
+      ok(!oldOne.j.user && oldTwo.status === 401, id + ': новый пароль завершает все прежние сессии');
+      ok((await call('old-' + id, '/api/login', { id, password: oldPin })).status === 401, id + ': прежний PIN больше не подходит');
+      ok((await call('new-' + id, '/api/login', { id, password: passwords[i] })).status === 200, id + ': вход по новому паролю');
+      ok((await call('old-' + id, '/api/login', { id, pin: oldPin })).status === 401, id + ': прежний PIN не подходит через старый API');
+      if (id === 'd1') ok((await call('d', '/api/me')).j.user === null, 'исходная сессия водителя тоже завершена');
+    }
+    const stored = JSON.parse(fs.readFileSync(path.join(dir, 'users.json'), 'utf8'));
+    ok(ids.every((id, i) => stored[id].password === true && stored[id].hash === crypto.scryptSync(passwords[i], stored[id].salt, 32, { N: 16384, r: 8, p: 1 }).toString('hex') && Object.keys(stored[id]).sort().join(',') === 'at,hash,len,password,salt'), 'хранятся только scrypt-хэши, соль и служебные поля');
+    ok(JSON.stringify(stored.anton) === antonBefore && (await call('anton-again', '/api/login', { id: 'anton', pin: '582614' })).status === 200, 'PIN Антона и ADMIN_PIN не изменены');
+    ok((await call('new-manager', '/api/password', { id: 'd2', password: passwords[5] })).status === 200, 'Руководитель задаёт пароль');
+    ok((await call('new-darya', '/api/password', { id: 'd3', password: passwords[5] })).status === 200, 'Дарья задаёт пароль');
+    ok(!out.includes(passwords[4]) && !out.includes(passwords[5]), 'пароли не попадают в логи');
+    const selfReset = await call('new-manager', '/api/password', { id: 'manager', password: passwords[5] });
+    ok(selfReset.status === 200 && selfReset.cookie.includes('Max-Age=0') && !(await call('new-manager', '/api/me')).j.user, 'смена своего пароля завершает текущий вход и очищает cookie');
+    ok((await call('new-manager', '/api/login', { id: 'manager', password: passwords[5] })).status === 200, 'Руководитель входит после смены своего пароля');
+    const loggedOut = await call('new-d4', '/api/logout', {});
+    ok(loggedOut.cookie.includes('Max-Age=0') && !(await call('new-d4', '/api/me')).j.user, 'выход завершает сессию и очищает cookie');
+    for (let i = 0; i < 5; i++) r = await call('bad', '/api/login', { id: 'd4', password: crypto.randomBytes(24).toString('hex') });
+    ok(r.status === 429 && (await call('bad', '/api/login', { id: 'd4', password: passwords[3] })).status === 429, 'существующая блокировка после 5 ошибок сохранена');
+    const restoreLogin = await call('a', '/api/login', { id: 'anton', pin: '582614' });
+    ok(restoreLogin.status === 200, 'блокировка одного человека не мешает входу Антона');
   } catch (e) { ok(false, 'сценарий: ' + e.message); }
   srv.kill('SIGTERM'); await new Promise(r => setTimeout(r, 300));
   const st = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
   ok(st.v >= 5, 'журнал сохранён на диск (v=' + st.v + ')');
   fs.rmSync(dir, { recursive: true, force: true });
+  require('./auth.js')(ok);
 
   console.log(fails ? '\n✗ ОШИБОК: ' + fails + ' — не публиковать' : '\n✓ Всё в порядке, можно публиковать');
   process.exit(fails ? 1 : 0);

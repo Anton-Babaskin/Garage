@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=22;
+const APP_VERSION=23;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -880,6 +880,15 @@ function renderLogin(){
     return;
   }
   const u=USERS.find(x=>x.id===loginPick)||{name:'?',len:4},len=u.len||4;
+  if(u.id!=='anton'){
+    $('#app').innerHTML='<div class="lg"><div class="lg-top"><button class="lg-back" data-act="lg-back">'+ic('chev','lg-back-ic')+T('Назад')+'</button>'+lang+'</div>'+
+      '<div class="lg-who">'+lgAvatar(u)+'<div class="lg-who-n">'+esc(dn(u.name))+'</div></div>'+
+      '<form id="login-form" class="stack" style="gap:18px" method="post" novalidate>'+
+      '<input type="hidden" name="username" autocomplete="username" value="'+esc(u.id)+'">'+
+      '<div class="field"><label class="lbl" for="login-password">'+T('Пароль')+'</label><input class="inp" id="login-password" name="password" type="password" autocomplete="current-password" required></div>'+
+      '<div class="lg-err" role="alert">'+esc(loginErr)+'</div><button class="btn btn-primary btn-lg btn-block" id="login-submit" type="submit"'+(loginBusy?' disabled':'')+'>'+T('Войти')+'</button></form></div>';
+    return;
+  }
   const dots=Array.from({length:len},(_,i)=>'<i class="'+(i<loginPin.length?'on':'')+'"></i>').join('');
   const key=k=>'<button class="lg-key" data-act="lg-key" data-k="'+k+'"'+(loginBusy?' disabled':'')+'>'+k+'</button>';
   $('#app').innerHTML='<div class="lg">'+'<div class="lg-top"><button class="lg-back" data-act="lg-back">'+ic('chev','lg-back-ic')+T('Назад')+'</button>'+lang+'</div>'+
@@ -887,18 +896,19 @@ function renderLogin(){
     '<div class="lg-dots'+(loginErr?' bad':'')+'">'+dots+'</div><div class="lg-err" role="alert">'+esc(loginErr)+'</div>'+
     '<div class="lg-pad">'+[1,2,3,4,5,6,7,8,9].map(key).join('')+'<span></span>'+key(0)+'<button class="lg-key del" data-act="lg-del" aria-label="'+T('Стереть')+'">⌫</button></div></div>';
 }
-async function loginSubmit(){
-  const u=USERS.find(x=>x.id===loginPick);if(!u)return;
-  loginBusy=true;renderLogin();
-  try{await api('/api/login',{id:u.id,pin:loginPin});try{localStorage.setItem(LAST_USER_KEY,u.id);}catch(e){}loginPin='';loginErr='';loginBusy=false;await srvBoot();}
+async function loginSubmit(password){
+  const u=USERS.find(x=>x.id===loginPick);if(!u||loginBusy)return;
+  if(u.id!=='anton'&&!password){loginErr=T('Введите пароль.');renderLogin();return;}
+  loginBusy=true;if(u.id==='anton')renderLogin();else{const b=$('#login-submit');if(b)b.disabled=true;}
+  try{await api('/api/login',u.id==='anton'?{id:u.id,pin:loginPin}:{id:u.id,password});try{localStorage.setItem(LAST_USER_KEY,u.id);}catch(e){}loginPin='';loginErr='';loginBusy=false;await srvBoot();}
   catch(e){loginBusy=false;loginPin='';loginErr=T(e.message);renderLogin();}
 }
 function accountSheet(){
   const mgr=isMgr(role);
   const users=mgr?USERS.length?USERS:[]:[];
-  const rows=users.map(u=>'<div class="acc-row">'+lgAvatar(u)+'<span class="acc-n">'+esc(dn(u.name))+(u.id===role?' <span class="faint">· '+T('вы')+'</span>':'')+'</span><button class="btn btn-sm" data-act="pin-set" data-user="'+esc(u.id)+'">'+T('Новый PIN')+'</button></div>').join('');
+  const rows=users.map(u=>'<div class="acc-row">'+lgAvatar(u)+'<span class="acc-n">'+esc(dn(u.name))+(u.id===role?' <span class="faint">· '+T('вы')+'</span>':'')+'</span><button class="btn btn-sm" data-act="'+(u.id==='anton'?'pin-set':'password-set')+'" data-user="'+esc(u.id)+'">'+(u.id==='anton'?T('Новый PIN'):T('Задать пароль'))+'</button></div>').join('');
   openSheet(head(esc(nameOf(role)),mgr?T('Руководство'):T('Водитель'))+
-    (mgr?'<div class="stack" style="gap:6px"><div class="lbl">'+T('PIN-коды для входа')+'</div><p class="hint" style="margin:0">'+T('Если водитель забыл PIN — задайте новый и сообщите ему лично.')+'</p><div class="acc-list">'+rows+'</div></div>':'')+
+    (mgr?'<div class="stack" style="gap:6px"><div class="lbl">'+T('Пароли и PIN-коды')+'</div><div class="acc-list">'+rows+'</div></div>':'')+
     '<div class="sheet-actions"><button class="btn btn-ghost" data-act="close">'+T('Закрыть')+'</button><button class="btn btn-danger btn-lg" data-act="logout">'+ic('x')+T('Выйти')+'</button></div>');
   if(mgr&&!USERS.length)api('/api/users').then(j=>{USERS=j.users;if(dlg.open)accountSheet();}).catch(()=>{});
 }
@@ -908,6 +918,14 @@ function pinSheet(id){
     '<div class="field"><label class="lbl" for="f-pin">'+T('PIN-код')+' ('+(u.mgr?T('6 цифр'):T('4 цифры'))+')</label><input class="inp km-input" id="f-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" maxlength="8"></div>'+
     '<div class="form-err" id="f-err" role="alert" hidden></div><div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="account">'+T('Отмена')+'</button><button class="btn btn-primary btn-lg" type="submit">'+T('Сохранить')+'</button></div></form>');
   setTimeout(()=>{const i=$('#f-pin');if(i)i.focus();},60);
+}
+function passwordSheet(id){
+  const u=USERS.find(x=>x.id===id);if(!u||id==='anton')return;
+  openSheet(head(T('Задать пароль'),esc(dn(u.name)))+'<form id="f" data-form="password" data-user="'+esc(id)+'" novalidate class="stack" style="gap:18px">'+
+    '<input type="hidden" name="username" autocomplete="username" value="'+esc(id)+'">'+
+    '<div class="field"><label class="lbl" for="f-password">'+T('Пароль')+'</label><input class="inp" id="f-password" name="password" type="password" autocomplete="new-password" required></div>'+
+    '<div class="form-err" id="f-err" role="alert" hidden></div><div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="account">'+T('Отмена')+'</button><button class="btn btn-primary btn-lg" type="submit">'+T('Сохранить')+'</button></div></form>');
+  setTimeout(()=>{const i=$('#f-password');if(i)i.focus();},60);
 }
 
 function odoFixSheet(id){
@@ -1255,7 +1273,7 @@ function moreSheet(){
     '<div class="more-sep"></div>'+
     it('lang','','globe',LANG==='tr'?'Русский':'Türkçe',T('Сменить язык'))+
     (wide?it('theme','','moon',theme==='dark'?T('Светлая тема'):T('Тёмная тема'),''):'')+
-    (SRV?it('account','','user',esc(nameOf(role)),T('PIN-коды и выход')):it('role','','user',esc(nameOf(role)),T('Сменить пользователя')))+
+    (SRV?it('account','','user',esc(nameOf(role)),T('Пароли, PIN и выход')):it('role','','user',esc(nameOf(role)),T('Сменить пользователя')))+
   '</div>');
 }
 function buildExp(rows){
@@ -1350,6 +1368,7 @@ document.addEventListener('click',ev=>{
       case 'role':closeSheet();if(SRV)accountSheet();else roleSheet();break;
       case 'account':accountSheet();break;
       case 'pin-set':pinSheet(b.dataset.user);break;
+      case 'password-set':passwordSheet(b.dataset.user);break;
       case 'logout':api('/api/logout',{}).catch(()=>{}).then(()=>location.reload());break;
       case 'srv-retry':srvBoot();break;
       case 'lg-pick':loginPick=b.dataset.user;loginPin='';loginErr='';renderLogin();break;
@@ -1438,12 +1457,13 @@ document.addEventListener('change',async e=>{
   }catch(err){photoBusy=false;reportError(err);}
 });
 document.addEventListener('submit',e=>{
-  const f=e.target;if(f.id!=='f')return;e.preventDefault();
+  const f=e.target;if(f.id==='login-form'){e.preventDefault();loginSubmit(String(new FormData(f).get('password')||''));return;}if(f.id!=='f')return;e.preventDefault();
   const fd=new FormData(f),get=n=>fd.get(n);
   try{
     if(photoBusy)throw new Error(T('Подождите, пока подготовится фото.'));
     const form=f.dataset.form;
     if(form==='pin'){const uid=f.dataset.user;api('/api/pin',{id:uid,pin:String(get('pin')||'')}).then(()=>{closeSheet();toast(T('PIN сохранён'));}).catch(err=>reportError(err));return;}
+    if(form==='password'){const uid=f.dataset.user;api('/api/password',{id:uid,password:String(get('password')||'')}).then(()=>{if(uid===role){location.reload();return;}closeSheet();toast(T('Пароль сохранён'));}).catch(err=>reportError(err));return;}
     if(form==='odofix'){runCommand({carId:f.dataset.car,actorId:role,kind:'odo_fix',odo:get('odo'),note:get('note')});return;}
     if(form==='wash'){const w=get('when'),d=w==='yesterday'?dayKey(NOW-DAY):w==='other'?String(get('washDate')||''):dayKey(NOW);
       if(!get('carId'))throw new Error(T('Выберите машину.'));
@@ -1518,6 +1538,6 @@ setInterval(()=>{
   NOW=Date.now();const clk=document.querySelector('[data-clock]');if(clk)clk.textContent=T('Стамбул · ')+tFmt.format(NOW);
 },20000);
 setInterval(()=>{const a=document.activeElement;if(dlg.open||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))return;render();},60000);
-document.addEventListener('keydown',e=>{if(!SRV||ME||!loginPick||loginBusy)return;if(/^[0-9]$/.test(e.key)){const u=USERS.find(x=>x.id===loginPick),n=(u&&u.len)||4;if(loginPin.length<n){loginPin+=e.key;loginErr='';}if(loginPin.length>=n)loginSubmit();else renderLogin();}else if(e.key==='Backspace'){loginPin=loginPin.slice(0,-1);renderLogin();}else if(e.key==='Escape'){loginPick=null;loginPin='';renderLogin();}});
+document.addEventListener('keydown',e=>{if(!SRV||ME||loginPick!=='anton'||loginBusy)return;if(/^[0-9]$/.test(e.key)){const u=USERS.find(x=>x.id===loginPick),n=(u&&u.len)||4;if(loginPin.length<n){loginPin+=e.key;loginErr='';}if(loginPin.length>=n)loginSubmit();else renderLogin();}else if(e.key==='Backspace'){loginPin=loginPin.slice(0,-1);renderLogin();}else if(e.key==='Escape'){loginPick=null;loginPin='';renderLogin();}});
 if(SRV)srvBoot();else render();
 })();

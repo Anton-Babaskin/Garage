@@ -2,6 +2,17 @@
 (function(){
 /* Турецкий словарь: ключ — точный русский текст из T('…'), значение — перевод. */
 var TRD={
+"Пароль": "Şifre",
+"Задать пароль": "Şifre belirle",
+"Пароль сохранён": "Şifre kaydedildi",
+"Пароли и PIN-коды": "Şifreler ve PIN kodları",
+"Пароли, PIN и выход": "Şifreler, PIN ve çıkış",
+"Неверный пароль.": "Şifre yanlış.",
+"Введите пароль.": "Şifrenizi girin.",
+"Пароль меняет руководство.": "Şifreyi yönetim değiştirir.",
+"Антон входит по PIN.": "Anton PIN ile giriş yapar.",
+"Пользователь не найден.": "Kullanıcı bulunamadı.",
+"Войти": "Giriş yap",
 " · ключи: <b>": " · anahtar: <b>",
 " · машина: ": " · araç: ",
 " · одометр ": " · km sayacı ",
