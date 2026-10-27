@@ -203,10 +203,9 @@ function project(state){
       }else{
         if(!d)fail(T('Сначала выберите водителя.'));
         if(event.kind==='checkout'){
-          if(car.status==='unconfigured')fail(T('Сначала внесите начальные данные машины.'));
-          if(car.status!=='parked')fail(T('Машина уже в поездке.'));
+          if(car.status!=='parked'&&car.status!=='unconfigured')fail(T('Машина уже в поездке.'));
           if(busy(d.id,car.id))fail(T('За вами уже числится другая машина или ожидается передача. Сначала завершите действие.'));
-          record.odoGap=odo-car.odo;record.fromLocation=car.location;record.fromSpot=car.spot;
+          record.odoGap=car.odo==null?0:odo-car.odo;record.fromLocation=car.location;record.fromSpot=car.spot;
           car.trip={id:event.id,carId:car.id,startAt:event.at,startOdo:odo,fromLocation:car.location,fromSpot:car.spot,segments:[],segment:{driverId:d.id,driverName:event.actorName,startAt:event.at,startOdo:odo}};
           car.status='driving';car.currentDriverId=d.id;car.location=null;car.spot='';car.keys=heldKeys(event,d.id,event.actorName);
         }else if(event.kind==='handover_accept'){

@@ -31,6 +31,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'core.js'), 'utf8'), ctx);
   const F = ctx.FleetCore;
   try { const s = F.demoState(); ok(F.project(s).cars.length === 4, 'демо-журнал собирается, 4 машины'); } catch (e) { ok(false, 'ядро: ' + e.message); }
+  try { require('./first-trip.js')(ok, F); } catch (e) { ok(false, 'первый выезд: ' + e.message); }
 
   console.log('4. Сервер (временная папка, без DATABASE_URL)');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'garage-test-'));
@@ -59,6 +60,22 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok((await call('a', '/api/pin', { id: 'd1', pin: '4826' })).status === 200, 'Антон задаёт PIN водителю');
     ok((await call('d', '/api/login', { id: 'd1', pin: '4826' })).status === 200, 'вход водителя');
     ok((await call('d', '/api/op', { op: 'setCarDetails', args: ['bmw', { model: 'X' }] })).status === 403, 'водитель не меняет данные машины');
+    const firstOp = cmd => call('d', '/api/op', { op: 'transact', args: [Object.assign({ carId: 'fiat' }, cmd)] });
+    ok((await firstOp({ kind: 'init', odo: 0, location: 'vadi', keyKind: 'security' })).status === 422, 'права на ручное внесение начальных данных остаются у руководства');
+    let first = await firstOp({ kind: 'checkout', odo: 0 });
+    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').trip.startOdo === 0, 'API: водитель взял новую машину без участия руководства');
+    ok((await firstOp({ kind: 'checkout', carId: 'audi', odo: 0 })).status === 422, 'API: занятому водителю нельзя взять вторую новую машину');
+    for (const args of [
+      { kind: 'park', location: 'vadi', keyKind: 'security' },
+      { kind: 'park', odo: 123456, keyKind: 'security' },
+      { kind: 'park', odo: 123456, location: 'vadi' }
+    ]) ok((await firstOp(args)).status === 422, 'API: при первой парковке обязательны пробег, место и ключи');
+    first = await firstOp({ kind: 'park', odo: 123456, location: 'vadi', keyKind: 'security' });
+    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').odo === 123456, 'API: первая парковка сохранила фактическое показание');
+    first = await firstOp({ kind: 'checkout', odo: 123456 });
+    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').trip.startOdo === 123456, 'API: следующая поездка использует последнее показание');
+    ok((await firstOp({ kind: 'park', odo: 123455, location: 'teras', keyKind: 'office' })).status === 422, 'API: уменьшение пробега по-прежнему запрещено');
+    ok((await firstOp({ kind: 'park', odo: 123481, location: 'teras', keyKind: 'office' })).status === 200, 'API: следующая поездка завершается штатно');
     let r = await call('a', '/api/op', { op: 'transact', args: [{ kind: 'init', carId: 'bmw', odo: 1000, location: 'vadi', keyKind: 'security' }] });
     ok(r.status === 200, 'руководство вносит машину');
     r = await call('d', '/api/op', { op: 'transact', args: [{ kind: 'checkout', carId: 'bmw', odo: 1000, actorId: 'd3' }] });

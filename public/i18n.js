@@ -3,6 +3,8 @@
 /* Турецкий словарь: ключ — точный русский текст из T('…'), значение — перевод. */
 var TRD={
 "Пароль": "Şifre",
+"Первый выезд": "İlk kullanım",
+"Первый выезд: можно оставить 0. Фактический пробег укажите при парковке.": "İlk kullanım: 0 bırakabilirsiniz. Gerçek kilometreyi park ederken girin.",
 "Задать пароль": "Şifre belirle",
 "Пароль сохранён": "Şifre kaydedildi",
 "Пароли и PIN-коды": "Şifreler ve PIN kodları",

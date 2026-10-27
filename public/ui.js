@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=25;
+const APP_VERSION=26;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -344,7 +344,6 @@ function carActions(c){
     return T('<span class="foot-note">Ждём, пока ')+esc(pend.toName)+T(' примет машину</span>');
   }
   if(isMgr(role))return c.status==='unconfigured'?'<button class="btn btn-primary" data-act="init" data-car="'+c.id+'">'+ic('plus')+T('Внести данные</button>'):'<button class="btn" data-act="history" data-car="'+c.id+'">'+ic('list')+T('История</button>');
-  if(c.status==='unconfigured')return T('<span class="foot-note">Нужны начальные данные от руководителя</span>');
   if(c.status==='driving'){
     if(c.currentDriverId!==role)return T('<span class="foot-note">За рулём: <b>')+esc(nameOf(c.currentDriverId))+'</b></span>';
     return '<button class="btn" data-act="handover_request" data-car="'+c.id+'">'+ic('swap')+T('Передать</button><button class="btn btn-primary" data-act="park" data-car="')+c.id+'">'+ic('park')+T('Поставить</button>');
@@ -483,11 +482,11 @@ function viewMine(){
   else{
     const busyMe=occupied(me);
     out+=head(T('Какую машину берёте?'),T('Нажмите на машину'))+'<div class="d-list">'+P.cars.map(c=>{
-      const can=c.status==='parked'&&!busyMe;
+      const can=(c.status==='parked'||c.status==='unconfigured')&&!busyMe;
       let where;
       if(c.status==='driving')where=T('Занята')+': '+esc(nameOf(c.currentDriverId));
       else if(c.status==='parked')where=esc(F.locationName(c.location)+(c.spot?', '+c.spot:''));
-      else where=T('Нет данных');
+      else where=T('Первый выезд');
       return '<button class="d-row" data-act="checkout" data-car="'+c.id+'"'+(can?'':' disabled')+'>'+carSVG(c.color,{id:c.id,side:true,surface:true})+
         '<span class="d-row-main"><span class="d-row-name">'+esc(c.name)+'</span><span class="d-row-where">'+where+'</span></span>'+
         (can?'<span class="d-row-go">'+T('Взять')+'</span>':'')+'</button>';
@@ -1006,7 +1005,7 @@ function formEnd(label,icon){
     T('<div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">Отмена</button><button class="btn btn-primary btn-lg" type="submit" id="f-submit">')+(icon?ic(icon):'')+label+'</button></div>';
 }
 function kmField(prev,prefill,kind){
-  const hint=prev==null?T('Текущий общий пробег с приборной панели'):kind==='checkout'||kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
+  const hint=prev==null?(kind==='checkout'?T('Первый выезд: можно оставить 0. Фактический пробег укажите при парковке.'):T('Текущий общий пробег с приборной панели')):kind==='checkout'||kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
   return T('<div class="field"><label class="lbl" for="f-odo">Пробег с одометра')+(prev!=null?T('<span class="opt-note">последний: ')+fmt(prev)+'</span>':'')+'</label>'+
     '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric" pattern="[0-9 ]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
     '<div class="hint" id="f-odo-hint">'+hint+'</div></div>';
@@ -1031,6 +1030,7 @@ function photoField(label){
 
 function actionSheet(kind,id){
   const c=carOf(id);if(!c)return;
+  const firstCheckout=kind==='checkout'&&c.status==='unconfigured';
   if(isMgr(role)&&kind!=='init'){toast(T('Для действий с машиной выберите водителя: кнопка справа вверху'),true);return;}
   const L={checkout:[T('Взять ')+c.name,T('Подтвердить выезд'),'key'],park:[T('Поставить ')+c.name,T('Подтвердить парковку'),'park'],handover_request:[T('Передать ')+c.name,T('Предложить передачу'),'swap'],handover_accept:[T('Принять ')+c.name,T('Подтвердить получение'),'check'],init:[T('Где стоит ')+c.name+'?',T('Сохранить данные'),'check']}[kind];
   let ctx=T('<div>Последнее показание: <b>')+(c.odo==null?T('не указано'):fmt(c.odo)+T(' км'))+'</b></div>';
@@ -1039,12 +1039,12 @@ function actionSheet(kind,id){
   if(kind==='handover_request')ctx+=T('<div>До принятия машина числится за вами</div>');
   if(kind==='park')ctx+=T('<div>В поездке с ')+tFmt.format(ts(c.trip.segment.startAt))+T(', получили на <b>')+fmt(c.trip.segment.startOdo)+T(' км</b></div>');
   if(kind==='init')ctx=T('<div>Начальная запись: с неё начнётся учёт этой машины</div>');
-  if(!isMgr(role)&&kind!=='init')ctx=kind==='handover_accept'?'<div>'+T('Передаёт')+': <b>'+esc(c.pendingTransfer.fromName)+'</b></div>':'<div>'+T('Последний пробег')+': <b>'+(c.odo==null?'—':fmt(c.odo)+' '+T('км'))+'</b></div>';
+  if(!isMgr(role)&&kind!=='init')ctx=kind==='handover_accept'?'<div>'+T('Передаёт')+': <b>'+esc(c.pendingTransfer.fromName)+'</b></div>':'<div>'+T('Последний пробег')+': <b>'+(firstCheckout?'0 '+T('км'):c.odo==null?'—':fmt(c.odo)+' '+T('км'))+'</b></div>';
   let body='<div class="ctx">'+ctx+'</div>';
   if(kind==='handover_request'){
     body+=T('<fieldset class="field"><legend class="lbl">Кому передаёте</legend><div class="opts ppl">')+state.drivers.filter(d=>d.id!==role).map(d=>{const b=occupied(d.id,id);return '<label class="opt"><input type="radio" name="toId" value="'+d.id+'"'+(b?' disabled':'')+'><span class="opt-face">'+avatar(d.id)+'<span>'+esc(d.name)+'<span class="sub">'+(b?T('занят: ')+esc(b.name):T('свободен'))+'</span></span></span></label>';}).join('')+T('</div><div class="hint">Получатель подтвердит приём на своём экране.</div></fieldset>');
   }
-  body+=kmField(c.odo,(kind==='checkout'||kind==='handover_accept')?c.odo:null,kind);
+  body+=kmField(c.odo,firstCheckout?0:(kind==='checkout'||kind==='handover_accept')?c.odo:null,kind);
   if(kind==='park'||kind==='init'){
     body+=locationField()+keysField(kind==='init',kind==='init'?'unknown':(isMgr(role)?null:'security'));
     if(kind==='init')body+=T('<div class="field"><label class="lbl" for="f-parkedby">Кто поставил машину</label><select class="inp" id="f-parkedby" name="parkedById"><option value="">Пока неизвестно</option>')+state.drivers.map(d=>'<option value="'+d.id+'">'+esc(d.name)+'</option>').join('')+'</select></div>';
