@@ -12,9 +12,5 @@ import * as zod from "zod";
  */
 export declare const HealthCheckResponse: zod.ZodObject<{
     status: zod.ZodString;
-}, "strip", zod.ZodTypeAny, {
-    status: string;
-}, {
-    status: string;
-}>;
+}, zod.z.core.$strip>;
 //# sourceMappingURL=api.d.ts.map
