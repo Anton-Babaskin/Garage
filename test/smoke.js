@@ -21,7 +21,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   const i18n = fs.readFileSync(path.join(ROOT, 'public/i18n.js'), 'utf8');
   const TRD = JSON.parse(i18n.match(/var TRD=(\{[\s\S]*?\n\});/)[1]);
   const keys = new Set();
-  for (const f of ['public/ui.js', 'core.js']) for (const m of fs.readFileSync(path.join(ROOT, f), 'utf8').matchAll(/(?:T|tpl)\('((?:[^'\\\n]|\\.)*)'/g)) keys.add(m[1]);
+  for (const f of ['public/ui.js', 'core.js', 'server.js']) for (const m of fs.readFileSync(path.join(ROOT, f), 'utf8').matchAll(/(?:T|tpl)\('((?:[^'\\\n]|\\.)*)'/g)) keys.add(m[1]);
   const missing = [...keys].filter(k => !(k in TRD));
   ok(!missing.length, missing.length ? 'нет перевода: ' + missing.slice(0, 8).map(k => JSON.stringify(k)).join(', ') : keys.size + ' строк переведено');
 
@@ -36,29 +36,79 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   console.log('4. Сервер (временная папка, без DATABASE_URL)');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'garage-test-'));
   const port = 18000 + Math.floor(Math.random() * 1000);
-  const env = Object.assign({}, process.env, { DATA_DIR: dir, PORT: String(port), HOST: '127.0.0.1', COOKIE_SECURE: '0', TRUST_PROXY: '0', ADMIN_PIN: '582614', DATABASE_URL: '', REPLIT_DEPLOYMENT: '' });
-  const srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-  let out = ''; srv.stdout.on('data', d => out += d); srv.stderr.on('data', d => out += d);
+  const siteKey = crypto.randomBytes(6).toString('hex');
+  const env = Object.assign({}, process.env, { DATA_DIR: dir, PORT: String(port), HOST: '127.0.0.1', COOKIE_SECURE: '0', COOKIE_SAMESITE: 'Strict', TRUST_PROXY: '0', ADMIN_PIN: '582614', SITE_KEY: siteKey, DATABASE_URL: '', REPLIT_DEPLOYMENT: '' });
+  let out = '', srv;
+  const start = async () => {
+    let started = false;
+    srv = spawn(process.execPath, [path.join(ROOT, 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    srv.stdout.on('data', d => { out += d; if (/запущен/.test(d)) started = true; });
+    srv.stderr.on('data', d => out += d);
+    for (let i = 0; i < 50 && !started; i++) await new Promise(r => setTimeout(r, 100));
+    ok(started, 'сервер стартовал');
+  };
+  const stop = () => new Promise(resolve => { srv.once('exit', resolve); srv.kill('SIGTERM'); });
   const B = 'http://127.0.0.1:' + port;
-  for (let i = 0; i < 50 && !/запущен/.test(out); i++) await new Promise(r => setTimeout(r, 100));
-  ok(/запущен/.test(out), 'сервер стартовал');
+  await start();
+  let accessCookie = '';
   const jar = {};
+  const pageFetch = p => fetch(B + p, { headers: { Cookie: accessCookie } });
   const call = async (who, p, body, hdr) => {
-    const h = Object.assign({ 'X-Garage': '1' }, body ? { 'Content-Type': 'application/json' } : {}, jar[who] ? { Cookie: jar[who] } : {}, hdr || {});
+    const h = Object.assign({ 'X-Garage': '1', Cookie: [accessCookie, jar[who]].filter(Boolean).join('; ') }, body ? { 'Content-Type': 'application/json' } : {}, hdr || {});
     const r = await fetch(B + p, { method: body ? 'POST' : 'GET', headers: h, body: body ? JSON.stringify(body) : undefined });
     const sc = r.headers.get('set-cookie'); if (sc && /gsid=[^;]+/.test(sc)) jar[who] = sc.match(/gsid=[^;]*/)[0];
     let j = null; try { j = await r.json(); } catch (e) {}
-    return { status: r.status, j, cookie: sc || '' };
+    return { status: r.status, j, cookie: sc || '', robots: r.headers.get('x-robots-tag') };
   };
   try {
-    const page = await fetch(B + '/'); const html = await page.text();
-    ok(page.status === 200 && /src="\/ui\.js"/.test(html), 'главная страница');
-    for (const s of ['/env.js', '/i18n.js', '/core.js', '/map.js', '/photos.js', '/ui.js', '/app.css', '/manifest.webmanifest']) { const r = await fetch(B + s); ok(r.status === 200, 'файл ' + s); }
-    ok((await fetch(B + '/../server.js')).status === 404 && (await fetch(B + '/%2e%2e/server.js')).status === 404, 'нельзя скачать server.js');
+    console.log('4а. Закрытый доступ, вход без списка людей и запрет индексации');
+    const noindex = r => r.headers.get('x-robots-tag') === 'noindex, nofollow';
+    for (const p of ['/', '/index.html', '/ui.js', '/app.css', '/i18n.js', '/core.js', '/env.js', '/photos.js', '/map.js', '/favicon.png', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest', '/api/users', '/api/me', '/api/state', '/api/backup', '/api/site-link', '/api/missing', '/missing', '/?k=wrong']) {
+      const r = await fetch(B + p);
+      ok(r.status === 404 && r.headers.get('content-type') === 'text/plain; charset=utf-8' && await r.text() === 'Not Found' && noindex(r), 'без доступа — одинаковый текстовый 404: ' + p);
+    }
+    for (const cookie of ['gk=wrong', 'gk=%', 'gsid=expired', 'gsid=%']) {
+      const r = await fetch(B + '/', { headers: { Cookie: cookie } });
+      ok(r.status === 404 && await r.text() === 'Not Found', 'неверная или повреждённая cookie не даёт доступа');
+    }
+    const blockedPost = await fetch(B + '/api/login', { method: 'POST', body: '{broken' });
+    ok(blockedPost.status === 404 && await blockedPost.text() === 'Not Found', 'без доступа POST API тоже скрыт, тело запроса не обрабатывается');
+    const hiddenHead = await fetch(B + '/ui.js', { method: 'HEAD' });
+    ok(hiddenHead.status === 404 && noindex(hiddenHead) && await hiddenHead.text() === '', 'HEAD не раскрывает статику');
+    const health = await fetch(B + '/healthz');
+    ok(health.status === 200 && (await health.json()).ok === true && noindex(health), '/healthz доступен без ключа как прежде');
+    const robots = await fetch(B + '/robots.txt');
+    ok(robots.status === 200 && await robots.text() === 'User-agent: *\nDisallow: /' && noindex(robots), '/robots.txt закрывает весь сайт от индексации');
+    const entry = await fetch(B + '/?k=' + siteKey, { redirect: 'manual' });
+    const gk = entry.headers.get('set-cookie') || '';
+    accessCookie = (gk.match(/gk=[^;]+/) || [''])[0];
+    const tag = crypto.createHmac('sha256', siteKey).update('gk').digest('hex');
+    ok(entry.status === 302 && entry.headers.get('location') === '/' && noindex(entry) && entry.headers.get('cache-control') === 'no-store', 'верный ключ даёт 302 без ключа в адресе');
+    ok(accessCookie === 'gk=' + tag && !gk.includes(siteKey) && ['HttpOnly', 'Secure', 'SameSite=Lax', 'Max-Age=31536000', 'Path=/'].every(s => gk.includes(s)), 'gk — HMAC-SHA256, защищённая cookie на 365 дней, не сам ключ');
+    const redirect = await fetch(B + '/ui.js?a=1&k=' + siteKey + '&b=2', { redirect: 'manual' });
+    ok(redirect.headers.get('location') === '/ui.js?a=1&b=2', 'redirect сохраняет путь и остальные параметры');
+    const page = await pageFetch('/'); const html = await page.text();
+    ok(page.status === 200 && /src="\/ui\.js"/.test(html) && page.headers.get('cache-control') === 'no-store', 'главная страница доступна с gk, без кэширования');
+    ok(html.includes('<title>Вход</title>') && html.includes('<meta name="robots" content="noindex,nofollow">') && noindex(page), 'безликий заголовок и meta robots на странице');
+    ok(html.includes('<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">'), 'браузер загружает закрытый manifest вместе с cookie доступа');
+    for (const s of ['/env.js', '/i18n.js', '/core.js', '/map.js', '/photos.js', '/ui.js', '/app.css', '/manifest.webmanifest']) { const r = await pageFetch(s); ok(r.status === 200 && noindex(r), 'разрешённый файл ' + s); }
+    const manifest = await pageFetch('/manifest.webmanifest');
+    const home = await manifest.json();
+    ok(home.start_url === '/?k=' + siteKey && home.display === 'standalone' && home.icons.length === 2 && manifest.headers.get('cache-control') === 'no-store', 'закрытый динамический manifest: ссылка для отдельного cookie-хранилища iPhone');
+    ok((await pageFetch('/../server.js')).status === 404 && (await pageFetch('/%2e%2e/server.js')).status === 404, 'нельзя скачать server.js');
+    ok((await call('x', '/api/users')).status === 401 && (await call('x', '/api/me')).j.user === null, 'gk не раскрывает список людей, /api/me до входа без имени');
     ok((await call('x', '/api/users', null, { 'X-Garage': '' })).status === 403, 'без заголовка X-Garage — отказ');
+    const unknown = await call('x', '/api/login', { username: 'nobody', password: 'wrong' });
+    const wrong = await call('x', '/api/login', { username: 'ANTON', password: 'wrong' });
+    ok(unknown.status === 401 && wrong.status === 401 && JSON.stringify(unknown.j) === JSON.stringify(wrong.j) && wrong.j.error === 'Неверный логин или пароль' && wrong.robots === 'noindex, nofollow', 'неверный пароль и неизвестный логин дают одинаковую ошибку');
     ok((await call('a', '/api/login', { id: 'anton', pin: '582614' })).status === 200, 'вход Антон (ADMIN_PIN)');
+    ok((await call('a', '/api/users')).j.users.length === 7, 'список людей только после входа');
+    const sessionPage = await fetch(B + '/', { headers: { Cookie: jar.a } });
+    ok(sessionPage.status === 200 && (sessionPage.headers.get('set-cookie') || '').includes('Max-Age=31536000'), 'действующая gsid без gk и ключа открывает сайт и продлевается');
+    ok((await call('a', '/api/site-link')).j.path === '/?k=' + siteKey, 'руководство получает готовую ссылку без записи ключа в файлы');
     ok((await call('a', '/api/pin', { id: 'd1', pin: '4826' })).status === 200, 'Антон задаёт PIN водителю');
     ok((await call('d', '/api/login', { id: 'd1', pin: '4826' })).status === 200, 'вход водителя');
+    ok((await call('d', '/api/site-link')).status === 403, 'водителю API копирования ссылки руководства недоступен');
     ok((await call('d', '/api/op', { op: 'setCarDetails', args: ['bmw', { model: 'X' }] })).status === 403, 'водитель не меняет данные машины');
     const firstOp = cmd => call('d', '/api/op', { op: 'transact', args: [Object.assign({ carId: 'fiat' }, cmd)] });
     ok((await firstOp({ kind: 'init', odo: 0, location: 'vadi', keyKind: 'security' })).status === 422, 'права на ручное внесение начальных данных остаются у руководства');
@@ -118,7 +168,13 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
       ok((await call('new-' + id, '/api/login', { id, password: passwords[i] })).status === 200, id + ': вход по новому паролю');
       ok((await call('old-' + id, '/api/login', { id, pin: oldPin })).status === 401, id + ': прежний PIN не подходит через старый API');
       if (id === 'd1') ok((await call('d', '/api/me')).j.user === null, 'исходная сессия водителя тоже завершена');
+      if (id === 'd1') ok((await fetch(B + '/', { headers: { Cookie: jar.d } })).status === 404, 'отозванная gsid без gk не открывает даже главную страницу');
     }
+    for (const [i, username] of ['ERKIN', 'OzGuR', 'murat', 'DRIVER4', 'manager', 'DARYA'].entries()) {
+      const r = await call('alias-' + i, '/api/login', { username, password: passwords[i] });
+      ok(r.status === 200 && r.j.user.id === ids[i], 'вход латинским логином без учёта регистра: ' + username);
+    }
+    ok((await call('alias-anton', '/api/login', { username: 'AnToN', password: '582614' })).j.user.id === 'anton', 'Антон вводит ADMIN_PIN в общее поле пароля');
     const stored = JSON.parse(fs.readFileSync(path.join(dir, 'users.json'), 'utf8'));
     ok(ids.every((id, i) => stored[id].password === true && stored[id].hash === crypto.scryptSync(passwords[i], stored[id].salt, 32, { N: 16384, r: 8, p: 1 }).toString('hex') && Object.keys(stored[id]).sort().join(',') === 'at,hash,len,password,salt'), 'хранятся только scrypt-хэши, соль и служебные поля');
     ok(JSON.stringify(stored.anton) === antonBefore && (await call('anton-again', '/api/login', { id: 'anton', pin: '582614' })).status === 200, 'PIN Антона и ADMIN_PIN не изменены');
@@ -132,10 +188,34 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok(loggedOut.cookie.includes('Max-Age=0') && !(await call('new-d4', '/api/me')).j.user, 'выход завершает сессию и очищает cookie');
     for (let i = 0; i < 5; i++) r = await call('bad', '/api/login', { id: 'd4', password: crypto.randomBytes(24).toString('hex') });
     ok(r.status === 429 && (await call('bad', '/api/login', { id: 'd4', password: passwords[3] })).status === 429, 'существующая блокировка после 5 ошибок сохранена');
+    for (let i = 0; i < 5; i++) r = await call('bad-unknown', '/api/login', { username: 'missing-account', password: 'wrong' });
+    ok(r.status === 429 && r.j.error === 'Неверный логин или пароль', 'неизвестный логин не выдаёт себя текстом ошибки или другой блокировкой');
     const restoreLogin = await call('a', '/api/login', { id: 'anton', pin: '582614' });
     ok(restoreLogin.status === 200, 'блокировка одного человека не мешает входу Антона');
+    console.log('5а. Смена SITE_KEY (перезапуск только тестового сервера)');
+    await stop();
+    const rotated = crypto.randomBytes(6).toString('hex');
+    env.SITE_KEY = rotated;
+    await start();
+    const oldLink = await fetch(B + '/?k=' + siteKey, { redirect: 'manual' });
+    const oldCookie = await fetch(B + '/', { headers: { Cookie: accessCookie } });
+    ok(oldLink.status === 404 && oldCookie.status === 404, 'смена SITE_KEY отключает старую ссылку и gk');
+    const oldSession = await fetch(B + '/api/me', { headers: { Cookie: jar.a, 'X-Garage': '1' } });
+    ok(oldSession.status === 200 && (await oldSession.json()).user.id === 'anton', 'смена SITE_KEY не завершает существующий вход');
+    const newEntry = await fetch(B + '/?k=' + rotated, { redirect: 'manual', headers: { Cookie: jar.a } });
+    const both = newEntry.headers.getSetCookie();
+    ok(newEntry.status === 302 && both.some(s => s.startsWith('gk=')) && both.some(s => s.startsWith('gsid=')), 'выдача gk не теряет продлённую cookie gsid');
+    const newManifest = await fetch(B + '/manifest.webmanifest', { headers: { Cookie: jar.a } });
+    ok((await newManifest.json()).start_url === '/?k=' + rotated, 'manifest сразу использует новый ключ, без устаревшего кэша');
+    await stop();
+    env.SITE_KEY = '';
+    await start();
+    ok((await fetch(B + '/')).status === 404 && (await fetch(B + '/', { headers: { Cookie: 'gk=' } })).status === 404 && (await fetch(B + '/?k=', { redirect: 'manual' })).status === 404, 'при отсутствии SITE_KEY пустые ключ и cookie не открывают сайт');
+    ok((await fetch(B + '/', { headers: { Cookie: jar.a } })).status === 200 && (await fetch(B + '/healthz')).status === 200, 'без SITE_KEY действующая сессия и healthz по-прежнему доступны');
+    const textFiles = fs.readdirSync(dir).filter(n => fs.statSync(path.join(dir, n)).isFile());
+    ok(!out.includes(siteKey) && !out.includes(rotated) && textFiles.every(n => { const t = fs.readFileSync(path.join(dir, n), 'utf8'); return !t.includes(siteKey) && !t.includes(rotated); }), 'ключ доступа не попал в логи или файлы данных');
   } catch (e) { ok(false, 'сценарий: ' + e.message); }
-  srv.kill('SIGTERM'); await new Promise(r => setTimeout(r, 300));
+  await stop();
   const st = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
   ok(st.v >= 5, 'журнал сохранён на диск (v=' + st.v + ')');
   fs.rmSync(dir, { recursive: true, force: true });

@@ -10,7 +10,7 @@
  *   node server.js reset-pins      — выдать всем новые PIN и показать их
  *
  *   Переменные: DATABASE_URL (PostgreSQL, на Replit задаётся сам), ADMIN_PIN (6 цифр для «Антон»),
- *   DATA_DIR, PORT, COOKIE_SECURE, COOKIE_SAMESITE, TRUST_PROXY, ALLOW_FRAME, SESSION_DAYS, BACKUP_KEEP.
+ *   SITE_KEY (12 латинских букв/цифр), DATA_DIR, PORT, COOKIE_SECURE, COOKIE_SAMESITE, TRUST_PROXY, ALLOW_FRAME, SESSION_DAYS, BACKUP_KEEP.
  */
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 
@@ -26,6 +26,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 const COOKIE_SECURE = process.env.COOKIE_SECURE !== '0';
 const TRUST_PROXY = process.env.TRUST_PROXY !== '0';
 const SESSION_DAYS = Number(process.env.SESSION_DAYS || 365);
+const SITE_KEY = process.env.SITE_KEY || '';
+const SITE_READY = /^[a-zA-Z0-9]{12}$/.test(SITE_KEY);
+const SITE_COOKIE = SITE_READY ? crypto.createHmac('sha256', SITE_KEY).update('gk').digest('hex') : '';
 const BACKUP_KEEP = Number(process.env.BACKUP_KEEP || 60);
 const MAX_BODY = 4 * 1024 * 1024;
 
@@ -83,8 +86,11 @@ function userList() {
     .concat(F.MANAGERS.map(m => ({ id: m.id, name: m.name, mgr: true, len: 6 })));
 }
 const findUser = id => userList().find(u => u.id === id) || null;
+const LOGIN_IDS = new Map([['erkin', 'd1'], ['ozgur', 'd2'], ['murat', 'd3'], ['driver4', 'd4'], ['manager', 'manager'], ['darya', 'darya'], ['anton', 'anton']]);
 let PINS = {};
 function hashPin(pin, salt) { return crypto.scryptSync(String(pin), salt, 32, { N: 16384, r: 8, p: 1 }).toString('hex'); }
+const LOGIN_DUMMY = { salt: crypto.randomBytes(16).toString('hex') };
+LOGIN_DUMMY.hash = hashPin(crypto.randomBytes(32).toString('hex'), LOGIN_DUMMY.salt);
 function setPin(id, pin) {
   const u = findUser(id); if (!u) throw new Error('Пользователь не найден.');
   pin = String(pin || '');
@@ -130,7 +136,7 @@ function newSession(id) {
   SESSIONS[tokenHash(tok)] = { id, exp: Date.now() + SESSION_DAYS * 864e5, at: Date.now() };
   saveSessions(); return tok;
 }
-function cookies(req) { const o = {}; String(req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) o[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); }); return o; }
+function cookies(req) { const o = {}; String(req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) { try { o[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); } catch (e) {} } }); return o; }
 function sessionOf(req, res) {
   const t = cookies(req).gsid; if (!t) return null;
   const k = tokenHash(t), s = SESSIONS[k]; if (!s) return null;
@@ -212,7 +218,7 @@ function staticFile(p) {
 }
 function serveStatic(req, res, f) {
   const st = fs.statSync(f), etag = '"' + st.size.toString(36) + '-' + Math.floor(st.mtimeMs).toString(36) + '"';
-  const h = { 'Content-Type': TYPES[path.extname(f)], 'Cache-Control': 'no-cache', ETag: etag };
+  const h = { 'Content-Type': TYPES[path.extname(f)], 'Cache-Control': 'no-store', ETag: etag };
   if (f.endsWith('.html')) h['Content-Security-Policy'] = CSP;
   if (req.headers['if-none-match'] === etag) return send(res, 304, '', h);
   return send(res, 200, fs.readFileSync(f), h);
@@ -221,10 +227,14 @@ function serveStatic(req, res, f) {
 /* ───── HTTP ───── */
 function send(res, code, body, headers) {
   const h = Object.assign({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Opener-Policy': 'same-origin',
-    'Permissions-Policy': 'geolocation=(), microphone=(), camera=(self)' }, ALLOW_FRAME ? {} : { 'X-Frame-Options': 'DENY' }, headers || {});
+    'X-Robots-Tag': 'noindex, nofollow', 'Permissions-Policy': 'geolocation=(), microphone=(), camera=(self)' }, ALLOW_FRAME ? {} : { 'X-Frame-Options': 'DENY' }, headers || {});
   if (typeof body === 'object' && !Buffer.isBuffer(body)) { body = JSON.stringify(body); h['Content-Type'] = 'application/json; charset=utf-8'; h['Cache-Control'] = 'no-store'; }
   res.writeHead(code, h); res.end(body);
 }
+function sameSecret(a, b) {
+  return crypto.timingSafeEqual(crypto.createHash('sha256').update(a).digest(), crypto.createHash('sha256').update(b).digest());
+}
+function notFound(res) { return send(res, 404, 'Not Found', { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }); }
 function readBody(req) {
   return new Promise((ok, bad) => {
     let size = 0; const chunks = [];
@@ -234,36 +244,58 @@ function readBody(req) {
   });
 }
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x'), p = url.pathname;
+  let url;
+  try { url = new URL(req.url, 'http://x'); } catch (e) { return notFound(res); }
+  const p = url.pathname;
   try {
-    if (req.method === 'GET' || req.method === 'HEAD') { const f = staticFile(p); if (f) return serveStatic(req, res, f); }
     if (p === '/healthz') return send(res, 200, { ok: true, v: DB.v });
-    if (!p.startsWith('/api/')) return send(res, 404, { error: 'Не найдено' });
+    if (p === '/robots.txt') return send(res, 200, 'User-agent: *\nDisallow: /', { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    const ses = sessionOf(req, res);
+    const keys = url.searchParams.getAll('k');
+    if (SITE_READY && keys.length === 1 && sameSecret(keys[0], SITE_KEY)) {
+      const previous = res.getHeader('Set-Cookie');
+      res.setHeader('Set-Cookie', (previous ? [previous].flat() : []).concat('gk=' + SITE_COOKIE + '; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000'));
+      url.searchParams.delete('k');
+      return send(res, 302, '', { Location: url.pathname.replace(/^\/{2,}/, '/') + url.search, 'Cache-Control': 'no-store' });
+    }
+    if (!ses && !(SITE_READY && sameSecret(cookies(req).gk || '', SITE_COOKIE))) return notFound(res);
+    if ((req.method === 'GET' || req.method === 'HEAD') && p === '/manifest.webmanifest') {
+      const manifest = JSON.parse(fs.readFileSync(path.join(PUB, 'manifest.webmanifest'), 'utf8'));
+      manifest.start_url = SITE_READY ? '/?k=' + SITE_KEY : '/';
+      return send(res, 200, JSON.stringify(manifest), { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') { const f = staticFile(p); if (f) return serveStatic(req, res, f); }
+    if (!p.startsWith('/api/')) return notFound(res);
     if (req.headers['x-garage'] !== '1') return send(res, 403, { error: 'Запрос отклонён.' });
     const ip = ipOf(req);
 
-    if (req.method === 'GET' && p === '/api/users') return send(res, 200, { users: userList() });
     if (req.method === 'POST' && p === '/api/login') {
-      const b = await readBody(req), u = findUser(String(b.id || ''));
-      const invalid = u && u.id === 'anton' ? 'Неверный PIN.' : 'Неверный пароль.';
-      if (limited('ip:' + ip, 30)) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
-      if (!u || !PINS[u.id]) { fail('ip:' + ip, 30); return send(res, 401, { error: invalid }); }
-      if (limited('u:' + u.id, 5)) return send(res, 429, { error: 'Слишком много попыток. Подождите 15 минут.' });
-      const rec = PINS[u.id], secret = u.id === 'anton' ? String(b.pin || '') : typeof b.password === 'string' ? b.password : !rec.password ? String(b.pin || '') : '';
+      const b = await readBody(req), login = typeof b.username === 'string' ? b.username.trim().toLowerCase() : String(b.id || '');
+      const u = findUser(typeof b.username === 'string' ? LOGIN_IDS.get(login) : login);
+      const invalid = T('Неверный логин или пароль');
+      const account = 'u:' + (u ? u.id : 'unknown:' + tokenHash(login));
+      if (limited('ip:' + ip, 30) || limited(account, 5)) return send(res, 429, { error: invalid });
+      const rec = u && PINS[u.id] || LOGIN_DUMMY;
+      const secret = typeof b.password === 'string' ? b.password : u && (u.id === 'anton' || !rec.password) ? String(b.pin || '') : '';
       const got = Buffer.from(hashPin(secret, rec.salt), 'hex'), want = Buffer.from(rec.hash, 'hex');
-      if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) {
-        fail('ip:' + ip, 30); const locked = fail('u:' + u.id, 5);
-        log('login fail', u.id, ip);
-        return send(res, locked ? 429 : 401, { error: locked ? 'Слишком много попыток. Подождите 15 минут.' : invalid });
+      if (!u || rec === LOGIN_DUMMY || !secret.length || got.length !== want.length || !crypto.timingSafeEqual(got, want)) {
+        fail('ip:' + ip, 30); const locked = fail(account, 5);
+        log('login fail', u ? u.id : 'unknown', ip);
+        return send(res, locked ? 429 : 401, { error: invalid });
       }
       FAILS.delete('u:' + u.id);
       log('login ok', u.id, ip);
       return send(res, 200, { user: u }, { 'Set-Cookie': cookie(newSession(u.id), SESSION_DAYS * 86400) });
     }
-    const ses = sessionOf(req, res);
     if (!ses && req.method === 'GET' && p === '/api/me') return send(res, 200, { user: null });
     if (!ses) return send(res, 401, { error: 'Войдите заново.' }, { 'Set-Cookie': cookie('', 0) });
     const me = ses.user;
+    if (req.method === 'GET' && p === '/api/users') return send(res, 200, { users: userList() });
+    if (req.method === 'GET' && p === '/api/site-link') {
+      if (!me.mgr) return send(res, 403, { error: 'Только для руководства.' });
+      if (!SITE_READY) return send(res, 503, { error: T('Ссылка доступа недоступна: проверьте SITE_KEY.') });
+      return send(res, 200, { path: '/?k=' + SITE_KEY });
+    }
     if (req.method === 'POST' && p === '/api/logout') { delete SESSIONS[ses.key]; saveSessions(); return send(res, 200, { ok: true }, { 'Set-Cookie': cookie('', 0) }); }
     if (req.method === 'GET' && p === '/api/me') return send(res, 200, { user: me });
     if (req.method === 'GET' && p === '/api/state') {
@@ -307,6 +339,7 @@ const server = http.createServer(async (req, res) => {
 
 /* ───── запуск ───── */
 async function main() {
+  if (!SITE_READY) console.error('SITE_KEY не задан или неверного формата: вход по ссылке закрыт. Нужны 12 латинских букв/цифр; действующие сессии сохраняют доступ.');
   await storeInit();
   loadState();
   PINS = readJSON('users.json', {});

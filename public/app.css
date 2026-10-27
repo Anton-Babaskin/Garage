@@ -1072,6 +1072,7 @@ body.login main{padding:0}
 .lg-wait{min-height:70vh;display:grid;place-content:center;gap:16px;text-align:center;color:var(--ink-2);font-size:17px}
 .lg{max-width:440px;margin:0 auto;padding:calc(18px + env(safe-area-inset-top,0px)) 18px calc(28px + env(safe-area-inset-bottom,0px));display:grid;gap:14px}
 .lg-top{display:flex;align-items:center;justify-content:space-between;min-height:44px}
+.lg-top>.lg-lang{margin-left:auto;min-width:44px;height:44px}
 .lg-brand{font:700 20px/1 var(--f-display)}
 .lg-lang,.lg-back{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font-weight:600;font-size:15px;cursor:pointer}
 .lg-lang .ic{width:17px;height:17px}

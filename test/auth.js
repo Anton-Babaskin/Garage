@@ -33,7 +33,7 @@ module.exports = ok => {
   let sheet = '';
   const ui = {
     document: { body: { classList: { add() {} } } }, USERS: users,
-    LANG: 'ru', loginPick: null, loginPin: '', loginErr: '', loginBusy: false,
+    LANG: 'ru', loginName: '', loginErr: '', loginBusy: false,
     $: () => app, T: s => s, esc: s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]),
     dn: s => s, ic: () => '', lgAvatar: () => '', role: 'manager', isMgr: () => true,
     head: () => '', nameOf: id => id, openSheet: html => { sheet = html; }, setTimeout() {}
@@ -43,13 +43,13 @@ module.exports = ok => {
     vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), ui);
   }
   for (const u of users.filter(u => u.id !== 'anton')) {
-    ui.loginPick = u.id; ui.renderLogin();
-    ok(app.innerHTML.includes('type="password" autocomplete="current-password"') && app.innerHTML.includes('type="hidden" name="username" autocomplete="username" value="' + u.id + '"') && app.innerHTML.includes('Войти') && !app.innerHTML.includes('lg-pad'), u.id + ': поле пароля, скрытый username и кнопка входа без цифровой клавиатуры');
     ui.passwordSheet(u.id);
     ok((sheet.match(/type="password"/g) || []).length === 1 && !/maxlength|minlength|pattern=|hint/.test(sheet), u.id + ': назначение одним полем без требований и подсказок');
   }
-  ui.loginPick = 'anton'; ui.renderLogin();
-  ok(app.innerHTML.includes('Введите PIN-код') && app.innerHTML.includes('lg-pad') && !app.innerHTML.includes('login-password'), 'экран Антона остался с PIN и цифровой клавиатурой');
+  ui.renderLogin();
+  ok(app.innerHTML.includes('name="username" type="text" autocomplete="username" autocapitalize="off"') && app.innerHTML.includes('type="password" autocomplete="current-password"') && app.innerHTML.includes('Войти'), 'общая форма: логин с autocomplete и без автокапитализации, пароль и кнопка входа');
+  ok(ui.document.title === 'Вход' && !/Гараж|Кто вы|lg-pad|lg-brand|lg-avatar|lg-user|Руководство/.test(app.innerHTML) && !users.some(u => new RegExp('>' + u.name + '<').test(app.innerHTML)), 'на входе нет названия, логотипа, списка людей или PIN-клавиатуры; заголовок Вход');
+  ok(!source.slice(source.indexOf('async function srvBoot('), source.indexOf('function lgAvatar(')).includes('/api/users'), 'до входа интерфейс не запрашивает список людей');
   ui.accountSheet();
   ok((sheet.match(/data-act="password-set"/g) || []).length === 6 && (sheet.match(/data-act="pin-set"/g) || []).length === 1 && sheet.includes('data-act="pin-set" data-user="anton"'), 'руководство видит назначение шести паролей и PIN Антона');
 };

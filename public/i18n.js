@@ -2,6 +2,12 @@
 (function(){
 /* Турецкий словарь: ключ — точный русский текст из T('…'), значение — перевод. */
 var TRD={
+"Вход": "Giriş",
+"Логин": "Kullanıcı adı",
+"Неверный логин или пароль": "Kullanıcı adı veya şifre yanlış",
+"Ссылка доступа": "Erişim bağlantısı",
+"Готово": "Tamam",
+"Ссылка доступа недоступна: проверьте SITE_KEY.": "Erişim bağlantısı kullanılamıyor: SITE_KEY ayarını kontrol edin.",
 "Пароль": "Şifre",
 "Первый выезд": "İlk kullanım",
 "Первый выезд: можно оставить 0. Фактический пробег укажите при парковке.": "İlk kullanım: 0 bırakabilirsiniz. Gerçek kilometreyi park ederken girin.",
@@ -876,5 +882,5 @@ window.LOC=lang==='tr'?'tr-TR':'ru-RU';
 window.T=function(s){if(lang!=='tr')return s;var v=TRD[s];return v==null?s:v;};
 window.tpl=function(s,vars){return window.T(s).replace(/\{(\w+)\}/g,function(_,k){return vars[k]!=null?vars[k]:'';});};
 window.dn=function(v){v=String(v);if(lang!=='tr')return v;v=v.replace(/Водитель\s*(\d)/g,'Sürücü $1');for(var i=0;i<NAMES.length;i++)v=v.split(NAMES[i][0]).join(NAMES[i][1]);return v;};
-try{document.documentElement.lang=lang;document.title=lang==='tr'?'Garaj ve sürücüler':'Гараж и водители';}catch(e){}
+try{document.documentElement.lang=lang;document.title=window.T('Вход');}catch(e){}
 })();

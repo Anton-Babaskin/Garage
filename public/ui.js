@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=26;
+const APP_VERSION=27;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -814,8 +814,7 @@ function countUp(){
 }
 
 /* ───────── v20: серверная версия — вход по PIN, личные кабинеты, синхронизация ───────── */
-let ME=null,SV=0,USERS=[],SRV_PENDING=[],SRV_BUSY=false,loginPick=null,loginPin='',loginErr='',loginBusy=false;
-const LAST_USER_KEY='garage-last-user';
+let ME=null,SV=0,USERS=[],SRV_PENDING=[],SRV_BUSY=false,loginName='',loginErr='',loginBusy=false;
 async function api(path,body){
   let r;
   try{r=await fetch(path,{method:body?'POST':'GET',headers:Object.assign({'X-Garage':'1'},body?{'Content-Type':'application/json'}:{}),body:body?JSON.stringify(body):undefined,credentials:'same-origin',cache:'no-store'});}
@@ -856,51 +855,33 @@ function srvStartPoll(){
 }
 async function srvBoot(){
   document.body.classList.add('srv');
+  document.body.classList.add('login');
   $('#app').innerHTML='<div class="lg-wait">'+T('Загрузка…')+'</div>';
   try{
     const m=await api('/api/me');if(!m.user){const e=new Error('');e.status=401;throw e;}ME=m.user;role=ME.id;view=isMgr(role)?'cars':'mine';
     await srvPull(true);srvStartPoll();document.body.classList.remove('login');render();
   }catch(e){
-    if(e.status===401){try{USERS=(await api('/api/users')).users;}catch(e2){USERS=[];}loginPick=null;try{const last=localStorage.getItem(LAST_USER_KEY);if(last&&USERS.some(u=>u.id===last))loginPick=last;}catch(e3){}renderLogin();}
+    if(e.status===401){ME=null;USERS=[];renderLogin();}
     else{$('#app').innerHTML='<div class="lg-wait"><b>'+esc(e.message)+'</b><button class="btn btn-lg" data-act="srv-retry">'+T('Повторить')+'</button></div>';}
   }
 }
 function lgAvatar(u){const n=dn(u.name).trim(),w=n.split(/\s+/),t=/\d$/.test(n)?n.replace(/\D/g,''):(w[0].charAt(0)+(w[1]?w[1].charAt(0):'')).toUpperCase();return '<span class="lg-av'+(u.mgr?' mgr':'')+'">'+esc(t)+'</span>';}
 function renderLogin(){
   document.body.classList.add('login');
-  const lang='<button class="lg-lang" data-act="lang">'+ic('globe')+'<span>'+(LANG==='tr'?'Русский':'Türkçe')+'</span></button>';
-  if(!loginPick){
-    const drv=USERS.filter(u=>!u.mgr),mgr=USERS.filter(u=>u.mgr);
-    const row=u=>'<button class="lg-user" data-act="lg-pick" data-user="'+esc(u.id)+'">'+lgAvatar(u)+'<span class="lg-name">'+esc(dn(u.name))+'</span>'+ic('chev','lg-chev')+'</button>';
-    $('#app').innerHTML='<div class="lg">'+'<div class="lg-top"><span class="lg-brand">'+T('Гараж')+'</span>'+lang+'</div>'+
-      '<h1 class="lg-h">'+T('Кто вы?')+'</h1><div class="lg-list">'+drv.map(row).join('')+'</div>'+
-      (mgr.length?'<div class="lg-sub">'+T('Руководство')+'</div><div class="lg-list">'+mgr.map(row).join('')+'</div>':'')+
-      (USERS.length?'':'<div class="lg-err">'+T('Нет связи с сервером. Проверьте интернет.')+'</div>')+'</div>';
-    return;
-  }
-  const u=USERS.find(x=>x.id===loginPick)||{name:'?',len:4},len=u.len||4;
-  if(u.id!=='anton'){
-    $('#app').innerHTML='<div class="lg"><div class="lg-top"><button class="lg-back" data-act="lg-back">'+ic('chev','lg-back-ic')+T('Назад')+'</button>'+lang+'</div>'+
-      '<div class="lg-who">'+lgAvatar(u)+'<div class="lg-who-n">'+esc(dn(u.name))+'</div></div>'+
-      '<form id="login-form" class="stack" style="gap:18px" method="post" novalidate>'+
-      '<input type="hidden" name="username" autocomplete="username" value="'+esc(u.id)+'">'+
-      '<div class="field"><label class="lbl" for="login-password">'+T('Пароль')+'</label><input class="inp" id="login-password" name="password" type="password" autocomplete="current-password" required></div>'+
-      '<div class="lg-err" role="alert">'+esc(loginErr)+'</div><button class="btn btn-primary btn-lg btn-block" id="login-submit" type="submit"'+(loginBusy?' disabled':'')+'>'+T('Войти')+'</button></form></div>';
-    return;
-  }
-  const dots=Array.from({length:len},(_,i)=>'<i class="'+(i<loginPin.length?'on':'')+'"></i>').join('');
-  const key=k=>'<button class="lg-key" data-act="lg-key" data-k="'+k+'"'+(loginBusy?' disabled':'')+'>'+k+'</button>';
-  $('#app').innerHTML='<div class="lg">'+'<div class="lg-top"><button class="lg-back" data-act="lg-back">'+ic('chev','lg-back-ic')+T('Назад')+'</button>'+lang+'</div>'+
-    '<div class="lg-who">'+lgAvatar(u)+'<div class="lg-who-n">'+esc(dn(u.name))+'</div><div class="lg-who-s">'+T('Введите PIN-код')+'</div></div>'+
-    '<div class="lg-dots'+(loginErr?' bad':'')+'">'+dots+'</div><div class="lg-err" role="alert">'+esc(loginErr)+'</div>'+
-    '<div class="lg-pad">'+[1,2,3,4,5,6,7,8,9].map(key).join('')+'<span></span>'+key(0)+'<button class="lg-key del" data-act="lg-del" aria-label="'+T('Стереть')+'">⌫</button></div></div>';
+  document.title=T('Вход');
+  const lang='<button class="lg-lang" data-act="lang" aria-label="Русский / Türkçe">'+(LANG==='tr'?'TR':'RU')+'</button>';
+  $('#app').innerHTML='<div class="lg"><div class="lg-top">'+lang+'</div>'+
+    '<form id="login-form" class="stack" style="gap:18px" method="post" novalidate>'+
+    '<div class="field"><label class="lbl" for="login-username">'+T('Логин')+'</label><input class="inp" id="login-username" name="username" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" value="'+esc(loginName)+'" required></div>'+
+    '<div class="field"><label class="lbl" for="login-password">'+T('Пароль')+'</label><input class="inp" id="login-password" name="password" type="password" autocomplete="current-password" required></div>'+
+    '<div class="lg-err" role="alert">'+esc(loginErr)+'</div><button class="btn btn-primary btn-lg btn-block" id="login-submit" type="submit"'+(loginBusy?' disabled':'')+'>'+T('Войти')+'</button></form></div>';
 }
-async function loginSubmit(password){
-  const u=USERS.find(x=>x.id===loginPick);if(!u||loginBusy)return;
-  if(u.id!=='anton'&&!password){loginErr=T('Введите пароль.');renderLogin();return;}
-  loginBusy=true;if(u.id==='anton')renderLogin();else{const b=$('#login-submit');if(b)b.disabled=true;}
-  try{await api('/api/login',u.id==='anton'?{id:u.id,pin:loginPin}:{id:u.id,password});try{localStorage.setItem(LAST_USER_KEY,u.id);}catch(e){}loginPin='';loginErr='';loginBusy=false;await srvBoot();}
-  catch(e){loginBusy=false;loginPin='';loginErr=T(e.message);renderLogin();}
+async function loginSubmit(username,password){
+  if(loginBusy)return;loginName=username;
+  if(!username.trim()||!password){loginErr=T('Неверный логин или пароль');renderLogin();return;}
+  loginBusy=true;const b=$('#login-submit');if(b)b.disabled=true;
+  try{await api('/api/login',{username,password});loginErr='';loginBusy=false;await srvBoot();}
+  catch(e){loginBusy=false;loginErr=T(e.message);renderLogin();}
 }
 function accountSheet(){
   const mgr=isMgr(role);
@@ -908,8 +889,15 @@ function accountSheet(){
   const rows=users.map(u=>'<div class="acc-row">'+lgAvatar(u)+'<span class="acc-n">'+esc(dn(u.name))+(u.id===role?' <span class="faint">· '+T('вы')+'</span>':'')+'</span><button class="btn btn-sm" data-act="'+(u.id==='anton'?'pin-set':'password-set')+'" data-user="'+esc(u.id)+'">'+(u.id==='anton'?T('Новый PIN'):T('Задать пароль'))+'</button></div>').join('');
   openSheet(head(esc(nameOf(role)),mgr?T('Руководство'):T('Водитель'))+
     (mgr?'<div class="stack" style="gap:6px"><div class="lbl">'+T('Пароли и PIN-коды')+'</div><div class="acc-list">'+rows+'</div></div>':'')+
+    (mgr?'<button class="btn btn-block" data-act="site-link">'+ic('link')+T('Ссылка доступа')+'</button>':'')+
     '<div class="sheet-actions"><button class="btn btn-ghost" data-act="close">'+T('Закрыть')+'</button><button class="btn btn-danger btn-lg" data-act="logout">'+ic('x')+T('Выйти')+'</button></div>');
   if(mgr&&!USERS.length)api('/api/users').then(j=>{USERS=j.users;if(dlg.open)accountSheet();}).catch(()=>{});
+}
+async function siteLinkSheet(){
+  if(!isMgr(role))return;
+  const j=await api('/api/site-link'),link=new URL(j.path,location.origin).href;
+  openSheet(head(T('Ссылка доступа'))+'<div class="field"><label class="lbl" for="f-link">'+T('Ссылка доступа')+'</label><input class="inp" id="f-link" value="'+esc(link)+'" readonly></div>'+
+    '<div class="sheet-actions"><button class="btn btn-ghost" data-act="close">'+T('Готово')+'</button><button class="btn btn-primary btn-lg" data-act="copy-link">'+ic('copy')+T('Скопировать')+'</button></div>');
 }
 function pinSheet(id){
   const u=USERS.find(x=>x.id===id)||{name:id,len:4,mgr:false};
@@ -969,6 +957,7 @@ function washSheet(carId){
 
 function render(){
   if(SRV&&!ME)return;
+  document.title=T('Гараж');
   NOW=Date.now();
   P=F.project(state);
   if(view==='mine'&&isMgr(role))view='cars';
@@ -1367,14 +1356,11 @@ document.addEventListener('click',ev=>{
       case 'theme':closeSheet();theme=theme==='dark'?'light':'dark';try{localStorage.setItem('garage-theme',theme);}catch(e){}applyTheme();renderTop();break;
       case 'role':closeSheet();if(SRV)accountSheet();else roleSheet();break;
       case 'account':accountSheet();break;
+      case 'site-link':siteLinkSheet().catch(reportError);break;
       case 'pin-set':pinSheet(b.dataset.user);break;
       case 'password-set':passwordSheet(b.dataset.user);break;
       case 'logout':api('/api/logout',{}).catch(()=>{}).then(()=>location.reload());break;
       case 'srv-retry':srvBoot();break;
-      case 'lg-pick':loginPick=b.dataset.user;loginPin='';loginErr='';renderLogin();break;
-      case 'lg-back':loginPick=null;loginPin='';loginErr='';renderLogin();break;
-      case 'lg-del':if(!loginBusy){loginPin=loginPin.slice(0,-1);loginErr='';renderLogin();}break;
-      case 'lg-key':{if(loginBusy)break;const u=USERS.find(x=>x.id===loginPick),n=(u&&u.len)||4;if(loginPin.length<n){loginPin+=b.dataset.k;loginErr='';}if(loginPin.length>=n)loginSubmit();else renderLogin();break;}
       case 'setrole':closeSheet();setRole(b.dataset.role);toast(T('Вы: ')+nameOf(role));break;
       case 'personal':closeSheet();setRole(b.dataset.driver);break;
       case 'driver':driverSheet(b.dataset.driver);break;
@@ -1457,7 +1443,7 @@ document.addEventListener('change',async e=>{
   }catch(err){photoBusy=false;reportError(err);}
 });
 document.addEventListener('submit',e=>{
-  const f=e.target;if(f.id==='login-form'){e.preventDefault();loginSubmit(String(new FormData(f).get('password')||''));return;}if(f.id!=='f')return;e.preventDefault();
+  const f=e.target;if(f.id==='login-form'){e.preventDefault();const fd=new FormData(f);loginSubmit(String(fd.get('username')||''),String(fd.get('password')||''));return;}if(f.id!=='f')return;e.preventDefault();
   const fd=new FormData(f),get=n=>fd.get(n);
   try{
     if(photoBusy)throw new Error(T('Подождите, пока подготовится фото.'));
@@ -1538,6 +1524,5 @@ setInterval(()=>{
   NOW=Date.now();const clk=document.querySelector('[data-clock]');if(clk)clk.textContent=T('Стамбул · ')+tFmt.format(NOW);
 },20000);
 setInterval(()=>{const a=document.activeElement;if(dlg.open||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))return;render();},60000);
-document.addEventListener('keydown',e=>{if(!SRV||ME||loginPick!=='anton'||loginBusy)return;if(/^[0-9]$/.test(e.key)){const u=USERS.find(x=>x.id===loginPick),n=(u&&u.len)||4;if(loginPin.length<n){loginPin+=e.key;loginErr='';}if(loginPin.length>=n)loginSubmit();else renderLogin();}else if(e.key==='Backspace'){loginPin=loginPin.slice(0,-1);renderLogin();}else if(e.key==='Escape'){loginPick=null;loginPin='';renderLogin();}});
 if(SRV)srvBoot();else render();
 })();
