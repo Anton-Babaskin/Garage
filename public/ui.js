@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=27;
+const APP_VERSION=28;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -77,6 +77,7 @@ if(!view)view=isMgr(role)?'cars':'mine';
 const ui={svcCar:'',filter:'all',journalMode:'events',filterCar:'all',filterDriver:'all',statsDays:7,flash:null};
 let P=null,NOW=Date.now();
 let photoData=null,photoBusy=false,photoSeq=0;
+let parkedPhotoSeq=0,parkPhotoData=null,serverResetBusy=false;
 
 function persist(next){
   if(storageOK&&!SRV){try{localStorage.setItem(KEY,JSON.stringify(next));}catch(e){throw new Error(T('Не хватает памяти браузера для сохранения. Уберите прикреплённое фото и повторите. Журнал не изменён.'));}}
@@ -223,11 +224,12 @@ function odoHTML(km,cls){
 }
 function plateHTML(p){return p?T('<span class="plate" aria-label="Номер ')+esc(p)+'"><span class="plate-tr">TR</span><span class="plate-n">'+esc(p)+'</span></span>':'';}
 function statusPill(c){
-  if(c.pendingTransfer)return T('<span class="pill pending">Передача</span>');
-  if(c.status==='driving')return T('<span class="pill trip">В поездке</span>');
-  if(c.status==='parked')return c.location==='service'?T('<span class="pill service">В сервисе</span>'):T('<span class="pill parked">Припаркована</span>');
-  return T('<span class="pill unknown">Нет данных</span>');
+  if(c.pendingTransfer)return T('<span class="pill pending status-pill status-pending">Передача</span>');
+  if(c.status==='driving')return T('<span class="pill trip status-pill status-driving">В поездке</span>');
+  if(c.status==='parked')return c.location==='service'?T('<span class="pill service status-pill status-parked">В сервисе</span>'):T('<span class="pill parked status-pill status-parked">Припаркована</span>');
+  return T('<span class="pill unknown status-pill status-none">Нет данных</span>');
 }
+function statusDot(status){return '<i class="status-dot status-'+(status==='driving'?'driving':status==='parked'?'parked':status==='pending'?'pending':'none')+'" aria-hidden="true"></i>';}
 function openIssues(c){return c.issues.filter(i=>i.status==='open');}
 function issueChips(c,clickable){
   const list=openIssues(c);if(!list.length)return '';
@@ -317,6 +319,7 @@ function entryHTML(e,withDate){
     case 'handover_cancel':icon='x';title=tpl('{by} отменил передачу {car}',V);break;
     case 'handover_decline':icon='x';title=tpl('{by} отклонил передачу {car}',V);break;
     case 'park':icon='park';title=tpl('{by} поставил {car}',V);sub.push(placeHTML(e.location,e.spot));sub.push(T('ключи ')+esc(keysWord(e)));chip=kmChip;break;
+    case 'car_reset':icon='trash';cls='resolve';title=tpl('{by} сбросил машину · {car}',V);break;
     case 'issue_report':{const t=F.issueType(e.issueType);icon=t.icon;cls='issue';title=tpl('{by}: замечание · {car}',V);sub.push('<span class="ent-flag">'+esc(t.name)+'</span>');break;}
     case 'issue_resolve':icon='check';cls='resolve';title=tpl('{by} закрыл замечание · {car}',V);sub.push(esc(F.issueName(e.issueType)));break;
     case 'odo_fix':icon='edit';cls='keys';title=tpl('{by} исправил пробег · {car}',V);sub.push(T('было')+' '+fmt(e.prevOdo)+' '+T('км')+' → '+T('стало')+' <b class="ent-odo">'+fmt(e.odo)+' '+T('км')+'</b>');break;
@@ -405,9 +408,9 @@ function carTile(c){
 
 /* ───────── views ───────── */
 function bossWhere(c){
-  if(c.status==='unconfigured')return T('Нет данных');
-  if(c.status==='driving')return '<b>'+T('В поездке')+'</b> · '+dur(NOW-ts(c.trip.startAt));
-  return '<b>'+esc(F.locationName(c.location))+'</b>'+(c.spot?', '+esc(c.spot):'');
+  if(c.status==='unconfigured')return statusDot('none')+T('Нет данных');
+  if(c.status==='driving')return statusDot(c.pendingTransfer?'pending':'driving')+'<b>'+T('В поездке')+'</b> · '+dur(NOW-ts(c.trip.startAt));
+  return statusDot('parked')+'<b>'+esc(F.locationName(c.location))+'</b>'+(c.spot?', '+esc(c.spot):'');
 }
 function bossKeys(c){
   if(c.status==='unconfigured')return '—';
@@ -457,7 +460,7 @@ function viewMine(){
     const p=incoming.pendingTransfer,c=incoming;
     out+=head(T('Вам передают машину'),esc(p.fromName)+' · '+esc(ago(p.at)))+
       '<div class="d-card">'+'<div class="d-photo">'+carSVG(c.color,{id:c.id,surface:true})+'</div>'+
-        '<div class="d-car">'+esc(c.name)+(c.model?' '+esc(c.model):'')+'</div>'+(c.plate?'<div class="d-plate">'+plateHTML(c.plate)+'</div>':'')+
+        '<div class="d-car">'+esc(c.name)+(c.model?' '+esc(c.model):'')+'</div>'+statusPill(c)+(c.plate?'<div class="d-plate">'+plateHTML(c.plate)+'</div>':'')+
         '<div class="d-line">'+T('Пробег при передаче')+': <b>'+fmt(p.odo)+' '+T('км')+'</b></div>'+
         '<button class="btn btn-go btn-xl btn-block" data-act="handover_accept" data-car="'+c.id+'">'+T('Принять машину')+'</button>'+
         '<button class="btn btn-quiet btn-block" data-act="handover_decline" data-car="'+c.id+'">'+T('Отклонить')+'</button>'+
@@ -469,7 +472,7 @@ function viewMine(){
     out+=head(T('Машина у вас'),'')+
       '<div class="d-card'+flashCls(c.id)+'">'+
         '<div class="d-photo">'+carSVG(c.color,{id:c.id,surface:true})+'</div>'+
-        '<div class="d-car">'+esc(c.name)+(c.model?' '+esc(c.model):'')+'</div>'+(c.plate?'<div class="d-plate">'+plateHTML(c.plate)+'</div>':'')+
+        '<div class="d-car">'+esc(c.name)+(c.model?' '+esc(c.model):'')+'</div>'+statusPill(c)+(c.plate?'<div class="d-plate">'+plateHTML(c.plate)+'</div>':'')+
         '<div class="d-line">'+T('Взяли в')+' '+tFmt.format(ts(seg.startAt))+(from?' · '+esc(from):'')+'</div>'+
         '<div class="d-line">'+T('Пробег при получении')+': <b>'+fmt(seg.startOdo)+' '+T('км')+'</b></div>'+(long?'<div class="d-warn">'+T('Поездка идёт больше')+' '+F.settingsOf(state).tripHours+' '+T('ч')+'. '+T('Не забудьте отметить, где поставили машину.')+'</div>':'')+
         
@@ -484,9 +487,9 @@ function viewMine(){
     out+=head(T('Какую машину берёте?'),T('Нажмите на машину'))+'<div class="d-list">'+P.cars.map(c=>{
       const can=(c.status==='parked'||c.status==='unconfigured')&&!busyMe;
       let where;
-      if(c.status==='driving')where=T('Занята')+': '+esc(nameOf(c.currentDriverId));
-      else if(c.status==='parked')where=esc(F.locationName(c.location)+(c.spot?', '+c.spot:''));
-      else where=T('Первый выезд');
+      if(c.status==='driving')where=statusDot(c.pendingTransfer?'pending':'driving')+T('Занята')+': '+esc(nameOf(c.currentDriverId));
+      else if(c.status==='parked')where=statusDot('parked')+esc(F.locationName(c.location)+(c.spot?', '+c.spot:''));
+      else where=statusDot('none')+T('Первый выезд');
       return '<button class="d-row" data-act="checkout" data-car="'+c.id+'"'+(can?'':' disabled')+'>'+carSVG(c.color,{id:c.id,side:true,surface:true})+
         '<span class="d-row-main"><span class="d-row-name">'+esc(c.name)+'</span><span class="d-row-where">'+where+'</span></span>'+
         (can?'<span class="d-row-go">'+T('Взять')+'</span>':'')+'</button>';
@@ -761,19 +764,20 @@ function placeSheet(id){
 function carDaily(carId,days){
   const arr=[],idx={};for(let i=days-1;i>=0;i--){const k=dayKey(NOW-i*DAY);idx[k]=arr.length;arr.push({key:k,km:0});}
   const add=s=>{const k=dayKey(s.endAt);if(k in idx)arr[idx[k]].km+=s.distance;};
-  P.trips.forEach(t=>{if(t.carId===carId)t.segments.forEach(add);});
-  const c=carOf(carId);if(c&&c.trip)c.trip.segments.forEach(add);
+  const c=carOf(carId);
+  P.trips.forEach(t=>{if(t.carId===carId&&c&&t.auditIndex>c.resetIndex)t.segments.forEach(add);});
+  if(c&&c.trip)c.trip.segments.forEach(add);
   return arr;
 }
 function bossFoot(c){
   if(c.status==='parked'&&c.lastPark)return (c.lastPark.initial?T('Учёт начат'):T('Поставил')+' '+esc(c.lastPark.driverName||'—'))+', '+esc(when(c.lastPark.at));
-  if(c.status==='driving'&&c.trip)return c.trip.fromLocation?tpl('Выехал {t} · с {p}',{t:esc(when(c.trip.startAt)),p:esc(F.locationName(c.trip.fromLocation))}):tpl('Выехал {t}',{t:esc(when(c.trip.startAt))});
+  if(c.status==='driving'&&c.trip)return '<span class="status-text-driving">'+statusDot(c.pendingTransfer?'pending':'driving')+(c.trip.fromLocation?tpl('Выехал {t} · с {p}',{t:esc(when(c.trip.startAt)),p:esc(F.locationName(c.trip.fromLocation))}):tpl('Выехал {t}',{t:esc(when(c.trip.startAt))}))+'</span>';
   return '';
 }
 function greet(){const h=Number(new Intl.DateTimeFormat('en-GB',{timeZone:TZ,hour:'2-digit',hour12:false}).format(NOW))%24;return h<5?T('Доброй ночи'):h<12?T('Доброе утро'):h<18?T('Добрый день'):T('Добрый вечер');}
 function dashCard(c,i){
   const drv=c.status==='driving',n=openIssues(c).length,pend=c.pendingTransfer;
-  const chip=c.status==='unconfigured'?'<span class="dc-chip">'+T('Нет данных')+'</span>':drv?'<span class="dc-chip live"><i></i>'+T('В поездке')+'</span>':'<span class="dc-chip"><i></i>'+esc(F.locationName(c.location))+'</span>';
+  const chip=pend?'<span class="dc-chip status-chip-pending">'+statusDot('pending')+T('Передача')+'</span>':c.status==='unconfigured'?'<span class="dc-chip status-chip-none">'+statusDot('none')+T('Нет данных')+'</span>':drv?'<span class="dc-chip live status-chip-driving">'+statusDot('driving')+T('В поездке')+'</span>':'<span class="dc-chip status-chip-parked">'+statusDot('parked')+esc(F.locationName(c.location))+'</span>';
   const daily=carDaily(c.id,7),tot=daily.reduce((a,d)=>a+d.km,0),mx=Math.max(1,...daily.map(d=>d.km));
   const kv=(k,v)=>'<span class="b-kv"><span class="b-k">'+k+'</span><span class="b-v">'+v+'</span></span>';
   const flag=pend?'<span class="b-flag">'+T('Передача')+': '+esc(pend.fromName)+' → '+esc(pend.toName)+'</span>':n?'<span class="b-flag">'+plural(n,T('замечание'),T('замечания'),T('замечаний'))+'</span>':'';
@@ -820,7 +824,12 @@ async function api(path,body){
   try{r=await fetch(path,{method:body?'POST':'GET',headers:Object.assign({'X-Garage':'1'},body?{'Content-Type':'application/json'}:{}),body:body?JSON.stringify(body):undefined,credentials:'same-origin',cache:'no-store'});}
   catch(e){const err=new Error(T('Нет связи с сервером. Проверьте интернет.'));err.status=0;throw err;}
   let j=null;try{j=await r.json();}catch(e){}
-  if(!r.ok){const err=new Error((j&&j.error)||T('Ошибка сервера. Попробуйте ещё раз.'));err.status=r.status;err.data=j;throw err;}
+  if(!r.ok){
+    let message=(j&&j.error)||T('Ошибка сервера. Попробуйте ещё раз.');
+    const odo=message.match(/^Проверьте пробег: было (\d+) км\. Если всё верно, попросите руководство исправить пробег$/);
+    if(odo)message=tpl('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег',{n:fmt(Number(odo[1]))});
+    const err=new Error(message);err.status=r.status;err.data=j;throw err;
+  }
   return j;
 }
 /* все изменения проходят через сервер; локально считаем сразу, чтобы экран отвечал мгновенно */
@@ -834,21 +843,22 @@ async function srvFlush(){
   if(SRV_BUSY)return;SRV_BUSY=true;let failed=false;
   while(SRV_PENDING.length){
     const it=SRV_PENDING[0];
-    try{const j=await api('/api/op',{op:it.op,args:it.args});SV=j.v;if(SRV_PENDING.length===1)state=F.upgrade(j.state);SRV_PENDING.shift();}
+    try{const j=await api('/api/op',{op:it.op,args:it.args});SV=j.v;if(SRV_PENDING.length===1)state=F.upgrade(j.state);SRV_PENDING.shift();if(j.photoWarning)toast(T(j.photoWarning),true);}
     catch(e){SRV_PENDING=[];failed=true;if(e.status===401){location.reload();return;}toast(T(e.message),true);try{await srvPull(true);}catch(e2){}}
   }
   SRV_BUSY=false;
+  {const rb=$('#f-submit'),ri=$('#f-reset-word');if(rb&&ri)rb.disabled=serverResetBusy||ri.value!==T('СБРОС')||SRV_PENDING.length>0||SRV_BUSY;}
   if(!dlg.open||failed)render();
 }
 async function srvPull(force){
   const j=await api('/api/state'+(force?'':'?v='+SV));
-  if(j.same)return false;SV=j.v;state=F.upgrade(j.state);return true;
+  if(j.same||j.v<SV)return false;SV=j.v;state=F.upgrade(j.state);return true;
 }
 function srvTyping(){const a=document.activeElement;return a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);}
 let srvPollStarted=false;
 function srvStartPoll(){
   if(srvPollStarted)return;srvPollStarted=true;
-  const tick=async()=>{if(document.hidden||SRV_PENDING.length||SRV_BUSY||!ME)return;try{if(await srvPull()&&!dlg.open&&!srvTyping())render();}catch(e){if(e.status===401)location.reload();}};
+  const tick=async()=>{if(document.hidden||SRV_PENDING.length||SRV_BUSY||serverResetBusy||!ME)return;try{if(await srvPull()&&!dlg.open&&!srvTyping())render();}catch(e){if(e.status===401)location.reload();}};
   setInterval(tick,15000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
   window.addEventListener('focus',tick);
@@ -979,24 +989,30 @@ function render(){
 
 /* ───────── sheets ───────── */
 const dlg=$('#sheet');
+function closeParkPhoto(){
+  const full=dlg.querySelector('.park-photo-full');if(full)full.remove();
+  document.documentElement.classList.remove('park-photo-open');
+}
 function head(title,sub){
   return '<div class="grab" aria-hidden="true"></div><div class="sheet-head"><div><h2 id="sheet-title">'+title+'</h2>'+(sub?'<p>'+sub+'</p>':'')+T('</div><button class="x" type="button" data-act="close" aria-label="Закрыть">')+ic('x')+'</button></div>';
 }
 function openSheet(html){dlg.classList.remove('full');
-  photoSeq++;photoData=null;photoBusy=false;
+  closeParkPhoto();
+  photoSeq++;photoData=null;photoBusy=false;parkedPhotoSeq++;parkPhotoData=null;
   $('#sheetBody').innerHTML=html;
   if(!dlg.open){try{dlg.showModal();}catch(e){dlg.setAttribute('open','');}}
   dlg.scrollTop=0;
 }
-function closeSheet(){dlg.classList.remove('full');photoSeq++;photoBusy=false;dlg.style.transform='';if(dlg.open){try{dlg.close();}catch(e){dlg.removeAttribute('open');}}}
+function closeSheet(){dlg.classList.remove('full');closeParkPhoto();photoSeq++;photoData=null;photoBusy=false;parkedPhotoSeq++;parkPhotoData=null;dlg.style.transform='';if(dlg.open){try{dlg.close();}catch(e){dlg.removeAttribute('open');}}}
 function formEnd(label,icon){
   return '<div class="form-err" id="f-err" role="alert" hidden></div><p class="form-note">'+ic('clock')+T('Автор и время запишутся автоматически</p>')+
     T('<div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">Отмена</button><button class="btn btn-primary btn-lg" type="submit" id="f-submit">')+(icon?ic(icon):'')+label+'</button></div>';
 }
 function kmField(prev,prefill,kind){
   const hint=prev==null?(kind==='checkout'?T('Первый выезд: можно оставить 0. Фактический пробег укажите при парковке.'):T('Текущий общий пробег с приборной панели')):kind==='checkout'||kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
+  const maxLength=kind==='checkout'||kind==='park'?' maxlength="7"':'';
   return T('<div class="field"><label class="lbl" for="f-odo">Пробег с одометра')+(prev!=null?T('<span class="opt-note">последний: ')+fmt(prev)+'</span>':'')+'</label>'+
-    '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric" pattern="[0-9 ]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
+    '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric"'+maxLength+' pattern="[0-9 ]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
     '<div class="hint" id="f-odo-hint">'+hint+'</div></div>';
 }
 function locationField(){
@@ -1015,6 +1031,12 @@ function noteField(ph,open){
 }
 function photoField(label){
   return '<details class="more"><summary>'+ic('camera')+esc(label)+T('<span class="opt-note">необязательно</span></summary><input type="file" id="f-photo" accept="image/*" capture="environment" class="file-inp"><div class="hint">Фото сохраняется вместе с записью в журнале.</div><div id="f-photo-prev" class="photo-prev"></div></details>');
+}
+function parkPhotoField(){
+  return '<div class="field park-photo-field">'+
+    '<label class="btn park-photo-pick">'+ic('camera')+T('Фото места')+'<input type="file" id="f-photo" accept="image/*" aria-label="'+T('Фото места')+'"></label>'+
+    '<span class="opt-note">'+T('необязательно')+'</span>'+
+    '<div id="f-photo-prev" class="photo-prev" aria-live="polite"></div></div>';
 }
 
 function actionSheet(kind,id){
@@ -1039,7 +1061,9 @@ function actionSheet(kind,id){
     if(kind==='init')body+=T('<div class="field"><label class="lbl" for="f-parkedby">Кто поставил машину</label><select class="inp" id="f-parkedby" name="parkedById"><option value="">Пока неизвестно</option>')+state.drivers.map(d=>'<option value="'+d.id+'">'+esc(d.name)+'</option>').join('')+'</select></div>';
   }
   if(kind==='checkout'&&openIssues(c).length)body+='<div class="note warn">'+ic('alert')+T('<span>Открытые замечания: ')+esc(openIssues(c).map(i=>F.issueName(i.type)).join(', '))+T('. Проверьте перед выездом.</span></div>');
-  body+=noteField(kind==='checkout'?T('Цель поездки'):T('Важное уточнение'))+((kind==='init'||!isMgr(role))?'':photoField(T('Фото одометра')));
+  body+=noteField(kind==='checkout'?T('Цель поездки'):T('Важное уточнение'));
+  if(kind==='park')body+=parkPhotoField();
+  else if(kind!=='init'&&isMgr(role))body+=photoField(T('Фото одометра'));
   openSheet(head(esc(L[0]),esc(kind==='init'?T('Начальные данные'):nameOf(role)))+'<form id="f" data-form="action" data-kind="'+kind+'" data-car="'+id+'" novalidate class="stack" style="gap:18px">'+body+formEnd(L[1],L[2])+'</form>');
 }
 function simpleSheet(kind,id){
@@ -1080,8 +1104,22 @@ function photoSheet(eventId){
   const e=state.events.find(x=>x.id===eventId);if(!e||!e.photo)return;
   openSheet(head(T('Фото к записи'),esc(e.actorName)+' · '+esc(when(e.at)))+'<img class="evidence" src="'+esc(e.photo)+T('" alt="Фото, прикреплённое к записи">'));
 }
+async function loadParkPhoto(id,seq){
+  try{
+    const data=await api('/api/photo/'+encodeURIComponent(id));
+    if(seq!==parkedPhotoSeq||!dlg.open||!document.getElementById('park-photo-block'))return;
+    parkPhotoData=data.photo;
+    const block=document.getElementById('park-photo-block');
+    const place=F.locationName(data.location),meta=[place,data.actorName,when(data.at)].filter(Boolean).map(esc).join(' · ');
+    block.innerHTML='<h3>'+T('Где стоит')+'</h3><button class="park-photo-thumb" type="button" data-act="park-photo-full" data-car="'+esc(id)+'" aria-label="'+T('Фото места, открыть на весь экран')+'"><img src="'+esc(data.photo)+'" alt="'+T('Фото места')+'" loading="lazy"></button><div class="park-photo-meta">'+meta+'</div>';
+  }catch(err){
+    if(seq!==parkedPhotoSeq||!dlg.open)return;
+    const block=document.getElementById('park-photo-block');
+    if(block)block.innerHTML='<div class="hint">'+T('Не удалось загрузить фото места.')+'</div>';
+  }
+}
 function carSheet(id){
-  const c=carOf(id);let rows='';
+  const c=carOf(id);if(!c)return;let rows='';
   if(c.status==='parked'){
     rows+=T('<dt>Где</dt><dd>')+placeHTML(c.location,c.spot)+T('</dd><dt>Ключи</dt><dd>')+esc(keysText(c))+(c.keys&&c.keys.note?' · '+esc(c.keys.note):'')+'</dd>';
     if(c.lastPark)rows+=T('<dt>Поставил</dt><dd>')+esc(c.lastPark.driverName||T('не указано'))+', '+esc(when(c.lastPark.at))+'</dd>';
@@ -1104,10 +1142,23 @@ function carSheet(id){
   if(isMgr(role))tools.push('<button class="btn btn-sm" data-act="details" data-car="'+id+'">'+ic('edit')+T('Модель и номер</button>'));
   const hist=P.audit.filter(e=>e.carId===id).slice(-6).reverse();
   openSheet(head(esc(c.name)+(c.model?' <span class="faint">'+esc(c.model)+'</span>':''),statusPill(c))+
-    '<div class="car-hero">'+carSVG(c.color,{id:c.id,surface:true})+(c.plate?plateHTML(c.plate):'')+'</div><div class="stack" style="gap:12px"><div class="b-odo">'+(c.odo!=null?fmt(c.odo)+' <span>'+T('км')+'</span>':'—')+'</div><dl class="kv">'+rows+'</dl></div>'+
+    '<div class="car-hero">'+carSVG(c.color,{id:c.id,surface:true})+(c.plate?plateHTML(c.plate):'')+'</div>'+
+    (c.status==='parked'&&c.hasPhoto?'<section class="park-photo-block" id="park-photo-block" aria-label="'+T('Где стоит')+'"><div class="photo-skeleton" aria-hidden="true"></div><div class="hint">'+T('Загрузка фото…')+'</div></section>':'')+
+    '<div class="stack" style="gap:12px"><div class="b-odo">'+(c.odo!=null?fmt(c.odo)+' <span>'+T('км')+'</span>':'—')+'</div><dl class="kv">'+rows+'</dl></div>'+
     (issues?T('<div class="stack" style="gap:8px"><div class="sh" style="margin:0"><h2>Открытые замечания</h2></div>')+issues+'</div>':'')+
     (isMgr(role)&&c.status!=='unconfigured'?'':'<div class="sheet-acts">'+acts+'</div>')+(tools.length?'<div class="b-tools">'+tools.join('')+'</div>':'')+
-    (hist.length?T('<div><div class="sh" style="margin:0 0 4px"><h2>Последние записи</h2><button class="linkbtn" data-act="history" data-car="')+id+T('">Весь журнал ')+ic('arrow')+'</button></div>'+hist.map(e=>entryHTML(e,true)).join('')+'</div>':''));
+    (hist.length?T('<div><div class="sh" style="margin:0 0 4px"><h2>Последние записи</h2><button class="linkbtn" data-act="history" data-car="')+id+T('">Весь журнал ')+ic('arrow')+'</button></div>'+hist.map(e=>entryHTML(e,true)).join('')+'</div>':'')+
+    (isMgr(role)?'<button class="btn btn-lg btn-danger btn-block" data-act="car-reset" data-car="'+id+'">'+ic('trash')+T('Сбросить машину')+'</button>':''));
+  parkPhotoData=null;
+  if(c.status==='parked'&&c.hasPhoto)loadParkPhoto(id,++parkedPhotoSeq);
+}
+function carResetSheet(id){
+  const c=carOf(id);if(!c||!isMgr(role))return;
+  openSheet(head(T('Сбросить машину?'),esc(c.name))+
+    T('<div class="ctx">Машина вернётся в “Нет данных”: пробег, водитель, ключи, паркинг обнулятся. Журнал сохранится.</div>')+
+    T('<div class="sheet-actions"><button class="btn btn-ghost" data-act="car-reset-cancel" data-car="')+id+
+    T('">Отмена</button><button class="btn btn-danger-fill btn-lg" data-act="car-reset-confirm" data-car="')+id+
+    T('">Да, сбросить</button></div>'));
 }
 function driverSheet(did){
   const d=F.driver(state,did);if(!d)return;
@@ -1224,7 +1275,7 @@ function textSheet(title,text){
 let EXP=null;
 function exportRows(){
   const rows=[[T('Дата'),T('Время'),T('Машина'),T('Действие'),T('Кто'),T('Кому'),T('От кого'),T('Паркинг'),T('Место'),T('Одометр, км'),T('Проехал, км'),T('Без записи, км'),T('Ключи'),T('Замечание'),T('Комментарий')]];
-  const names={init:T('Учёт начат'),checkout:T('Взял машину'),handover_request:T('Предложил передачу'),handover_accept:T('Принял машину'),handover:T('Передал машину'),handover_cancel:T('Отменил передачу'),handover_decline:T('Отклонил передачу'),park:T('Поставил'),issue_report:T('Замечание'),issue_resolve:T('Закрыл замечание'),keys:T('Отметил ключи'),odo_fix:T('Исправил пробег')};
+  const names={init:T('Учёт начат'),checkout:T('Взял машину'),handover_request:T('Предложил передачу'),handover_accept:T('Принял машину'),handover:T('Передал машину'),handover_cancel:T('Отменил передачу'),handover_decline:T('Отклонил передачу'),park:T('Поставил'),car_reset:T('Сбросил машину'),issue_report:T('Замечание'),issue_resolve:T('Закрыл замечание'),keys:T('Отметил ключи'),odo_fix:T('Исправил пробег')};
   const dF=new Intl.DateTimeFormat(LOC,{timeZone:TZ,day:'2-digit',month:'2-digit',year:'numeric'});
   P.audit.filter(matchesEvent).slice().reverse().forEach(e=>{const t=ts(e.at),k=e.keyKind?keysWord({keyKind:e.keyKind,keyDriverName:e.keyDriverName,keyNote:e.keyNote}):'';
     rows.push([dF.format(t),tFmt.format(t),(carOf(e.carId)||{}).name||'',(e.kind==='wash'?F.washName(e.washType):(names[e.kind]||e.kind)),dn(e.actorName||''),dn(e.toName||''),dn(e.fromName||''),e.location?F.locationName(e.location):'',e.spot||'',e.odo==null?'':e.odo,e.distance==null?'':e.distance,e.odoGap>0?e.odoGap:'',dn(k),e.issueType?F.issueName(e.issueType):'',e.note||'']);});
@@ -1259,11 +1310,21 @@ function moreSheet(){
     it('go',' data-to="service"','wrench',T('ТО'),T('Техобслуживание, страховки, техосмотр'),view==='service')+
     it('go',' data-to="wash"','drop',T('Мойки'),T('Когда мыли машины, химчистка'),view==='wash')+
     it('table','','table',T('Журнал таблицей'),T('Все записи одной таблицей, выгрузка в Google Таблицы'))+
+    (SRV&&role==='anton'?it('server-reset','','trash',T('Начать с чистого листа'),T('Сбросить журнал, сохранив пользователей и настройки')):'')+
     '<div class="more-sep"></div>'+
     it('lang','','globe',LANG==='tr'?'Русский':'Türkçe',T('Сменить язык'))+
     (wide?it('theme','','moon',theme==='dark'?T('Светлая тема'):T('Тёмная тема'),''):'')+
     (SRV?it('account','','user',esc(nameOf(role)),T('Пароли, PIN и выход')):it('role','','user',esc(nameOf(role)),T('Сменить пользователя')))+
   '</div>');
+}
+function serverResetSheet(){
+  if(!SRV||role!=='anton')return;
+  const word=T('СБРОС');
+  openSheet(head(T('Сбросить все данные?'),T('Только для завершения тестов'))+
+    T('<div class="ctx">Сервер сначала сохранит резервную копию. Все машины станут «Нет данных»; пользователи, пароли, настройки и точки паркингов останутся.</div>')+
+    '<form id="f" data-form="server-reset" novalidate class="stack" style="gap:16px">'+
+    '<div class="field"><label class="lbl" for="f-reset-word">'+T('Для подтверждения введите')+' <b>'+word+'</b></label><input class="inp" id="f-reset-word" name="confirmation" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>'+
+    T('<div class="form-err" id="f-err" role="alert" hidden></div><div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">Отмена</button><button class="btn btn-danger-fill btn-lg" id="f-submit" type="submit" disabled>Сбросить всё</button></div></form>'));
 }
 function buildExp(rows){
   const cell=v=>{let t=String(v==null?'':v);if(typeof v==='string'&&/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';};
@@ -1310,7 +1371,7 @@ function toast(msg,err){{const tEl=$('#toast'),host=dlg.open?dlg:document.body;i
   void t.offsetWidth;t.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('on'),3200);
 }
 function reportError(err){const el=$('#f-err');if(dlg.open&&el){el.textContent=dn(err.message);el.hidden=false;el.scrollIntoView({block:'nearest'});}else toast(err.message,true);}
-const DONE={wash:T('Мойка записана'),odo_fix:T('Пробег исправлен'),park:T('Парковка и ключи записаны'),handover_request:T('Запрос отправлен на экран получателя'),handover_accept:T('Получение подтверждено. Машина и ключи за вами'),checkout:T('Выезд записан. Машина за вами'),issue_report:T('Замечание добавлено на карточку'),issue_resolve:T('Замечание закрыто, история сохранена'),keys:T('Место ключей сохранено'),init:T('Начальные данные сохранены'),handover_cancel:T('Передача отменена'),handover_decline:T('Передача отклонена')};
+const DONE={wash:T('Мойка записана'),odo_fix:T('Пробег исправлен'),park:T('Парковка и ключи записаны'),car_reset:T('Машина сброшена'),handover_request:T('Запрос отправлен на экран получателя'),handover_accept:T('Получение подтверждено. Машина и ключи за вами'),checkout:T('Выезд записан. Машина за вами'),issue_report:T('Замечание добавлено на карточку'),issue_resolve:T('Замечание закрыто, история сохранена'),keys:T('Место ключей сохранено'),init:T('Начальные данные сохранены'),handover_cancel:T('Передача отменена'),handover_decline:T('Передача отклонена')};
 function runCommand(cmd){
   persist(F.transact(state,cmd));
   ui.flash={car:cmd.carId,t:Date.now()};
@@ -1319,6 +1380,9 @@ function runCommand(cmd){
 function goView(v,opts){view=v;if(opts)Object.assign(ui,opts);render();window.scrollTo(0,0);}
 
 document.addEventListener('click',ev=>{
+  const full=ev.target.closest&&ev.target.closest('.park-photo-full');
+  if(full){closeParkPhoto();return;}
+  if(serverResetBusy){ev.preventDefault();return;}
   const b=ev.target.closest('[data-act],[data-view]');
   if(!b){if(ev.target===dlg)closeSheet();return;}
   if(b.dataset.view&&!b.dataset.act){goView(b.dataset.view,{filterCar:'all',filterDriver:'all'});return;}
@@ -1326,6 +1390,17 @@ document.addEventListener('click',ev=>{
   try{
     switch(a){
       case 'car':carSheet(id);break;
+      case 'park-photo-full':
+        if(parkPhotoData&&dlg.open){
+          document.documentElement.classList.add('park-photo-open');
+          dlg.insertAdjacentHTML('beforeend','<div class="park-photo-full" role="dialog" aria-label="'+T('Фото места')+'"><button type="button" class="park-photo-close" aria-label="'+T('Закрыть')+'">'+ic('x')+'</button><img src="'+esc(parkPhotoData)+'" alt="'+T('Фото места')+'"></div>');
+          dlg.querySelector('.park-photo-close').focus({preventScroll:true});
+        }
+        break;
+      case 'car-reset':if(isMgr(role))carResetSheet(id);break;
+      case 'car-reset-cancel':carSheet(id);break;
+      case 'car-reset-confirm':if(isMgr(role))runCommand({kind:'car_reset',carId:id,actorId:role});break;
+      case 'photo-remove':photoSeq++;photoData=null;photoBusy=false;{const inp=$('#f-photo'),prev=$('#f-photo-prev');if(inp)inp.value='';if(prev)prev.innerHTML='';}break;
       case 'wash':closeSheet();washSheet(id);break;
       case 'odofix':if(isMgr(role))odoFixSheet(id);break;
       case 'place':if(isMgr(role))placeSheet(b.dataset.place);break;
@@ -1373,6 +1448,7 @@ document.addEventListener('click',ev=>{
       case 'personal-link':linkSheet(b.dataset.driver);break;
       case 'copy-link':{const inp=$('#f-link');try{navigator.clipboard.writeText(inp.value).then(()=>toast(T('Ссылка скопирована')),()=>{inp.focus();inp.select();});}catch(e){inp.focus();inp.select();}break;}
       case 'about':aboutSheet();break;
+      case 'server-reset':if(role==='anton')serverResetSheet();break;
       case 'settings':if(isMgr(role))settingsSheet();break;
       case 'details':if(isMgr(role))detailsSheet(id);break;
       case 'rename':if(isMgr(role))renameSheet(b.dataset.driver);break;
@@ -1407,18 +1483,27 @@ function formLive(){
 function kmHint(){
   const inp=$('#f-odo'),h=$('#f-odo-hint');if(!inp||!h)return;
   const prev=inp.dataset.prev===''?null:+inp.dataset.prev,kind=inp.dataset.kind,txt=inp.value.replace(/\s/g,'');
+  const protectedOdo=kind==='checkout'||kind==='park';
   if(!txt){h.className='hint';h.textContent=T('Введите показание с приборной панели');return;}
   if(!/^\d+$/.test(txt)){h.className='hint err';h.textContent=T('Только цифры, без точек и букв');return;}
   const v=+txt;
+  if(protectedOdo&&(v<0||v>2000000)){h.className='hint err';h.textContent=T('Укажите пробег от 0 до 2 000 000 км.');return;}
   if(prev==null){h.className='hint';h.textContent=fmt(v)+T(' км');return;}
   const d=v-prev;
+  if(protectedOdo&&Math.abs(d)>3000){h.className='hint err';h.textContent=tpl('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег',{n:fmt(prev)});return;}
   if(d<0){h.className='hint err';h.textContent=T('Меньше последней записи (')+fmt(prev)+T(' км). Проверьте одометр');return;}
   if(kind==='checkout'){if(d===0){h.className='hint ok';h.textContent=T('Совпадает с последней записью');}else{h.className='hint warn';h.textContent='+'+fmt(d)+T(' км с последней записи. Руководитель увидит это как пробег без записи');}return;}
   if(kind==='handover_accept'){h.className=d===0?'hint ok':'hint warn';h.textContent=d===0?T('Совпадает с пробегом при передаче'):'+'+fmt(d)+T(' км после запроса на передачу');return;}
   if(d>1500){h.className='hint warn';h.textContent='+'+fmt(d)+T(' км. Проверьте, нет ли лишней цифры');return;}
   h.className='hint ok';h.textContent='+'+fmt(d)+T(' км ')+(kind==='handover_request'?T('за вашу поездку'):T('за поездку'));
 }
-document.addEventListener('input',e=>{if(e.target.id==='f-odo')kmHint();});
+document.addEventListener('input',e=>{
+  if(e.target.id==='f-odo')kmHint();
+  if(e.target.id==='f-reset-word'){
+    const btn=$('#f-submit'),expected=T('СБРОС');
+    if(btn)btn.disabled=serverResetBusy||e.target.value!==expected||SRV_PENDING.length>0||SRV_BUSY;
+  }
+});
 document.addEventListener('change',async e=>{
   const t=e.target;
   try{
@@ -1432,7 +1517,10 @@ document.addEventListener('change',async e=>{
       if(!t.files[0]){photoBusy=false;prev.textContent='';return;}
       photoBusy=true;prev.textContent=T('Подготовка фото…');
       const out=await compressPhoto(t.files[0]);if(token!==photoSeq)return;
-      photoData=out;photoBusy=false;prev.innerHTML='<img src="'+out+T('" alt="Предпросмотр фото"><span>Фото прикреплено</span>');return;
+      photoData=out;photoBusy=false;
+      const preview='<img src="'+esc(out)+T('" alt="Предпросмотр фото"><span>Фото прикреплено</span>');
+      prev.innerHTML=$('#f').dataset.kind==='park'?preview+'<button type="button" class="linkbtn sm" data-act="photo-remove">'+ic('x')+T('Убрать')+'</button>':preview;
+      return;
     }
     if(t.id==='restoreFile'){
       const file=t.files[0];t.value='';if(!file)return;
@@ -1443,11 +1531,29 @@ document.addEventListener('change',async e=>{
   }catch(err){photoBusy=false;reportError(err);}
 });
 document.addEventListener('submit',e=>{
+  if(serverResetBusy){e.preventDefault();return;}
   const f=e.target;if(f.id==='login-form'){e.preventDefault();const fd=new FormData(f);loginSubmit(String(fd.get('username')||''),String(fd.get('password')||''));return;}if(f.id!=='f')return;e.preventDefault();
   const fd=new FormData(f),get=n=>fd.get(n);
   try{
     if(photoBusy)throw new Error(T('Подождите, пока подготовится фото.'));
     const form=f.dataset.form;
+    if(form==='server-reset'){
+      if(role!=='anton'||!SRV)throw new Error(T('Сброс доступен только Антону.'));
+      const confirmation=String(get('confirmation')||''),expected=T('СБРОС');
+      if(confirmation!==expected)throw new Error(T('Слово подтверждения не совпадает.'));
+      if(SRV_PENDING.length||SRV_BUSY)throw new Error(T('Дождитесь синхронизации изменений перед сбросом.'));
+      serverResetBusy=true;$('#f-submit').disabled=true;
+      api('/api/reset',{confirmation}).then(j=>{
+        SRV_PENDING=[];SV=j.v;state=F.upgrade(j.state);
+        ui.filter='all';ui.filterCar='all';ui.filterDriver='all';
+        closeSheet();render();toast(T('Данные сброшены. Резервная копия сохранена.'));
+      }).catch(err=>reportError(new Error(T(err.message)))).finally(()=>{
+        serverResetBusy=false;
+        const btn=$('#f-submit'),inp=$('#f-reset-word');
+        if(btn&&inp)btn.disabled=inp.value!==expected||SRV_PENDING.length>0||SRV_BUSY;
+      });
+      return;
+    }
     if(form==='pin'){const uid=f.dataset.user;api('/api/pin',{id:uid,pin:String(get('pin')||'')}).then(()=>{closeSheet();toast(T('PIN сохранён'));}).catch(err=>reportError(err));return;}
     if(form==='password'){const uid=f.dataset.user;api('/api/password',{id:uid,password:String(get('password')||'')}).then(()=>{if(uid===role){location.reload();return;}closeSheet();toast(T('Пароль сохранён'));}).catch(err=>reportError(err));return;}
     if(form==='odofix'){runCommand({carId:f.dataset.car,actorId:role,kind:'odo_fix',odo:get('odo'),note:get('note')});return;}
@@ -1517,7 +1623,12 @@ document.addEventListener('click',e=>{
   if(mapMoved){mapMoved=false;return;}
   try{pickAt(el,e.clientX,e.clientY);}catch(err){toast(dn(err.message),true);}
 });
-dlg.addEventListener('cancel',()=>{photoSeq++;photoBusy=false;});
+dlg.addEventListener('cancel',e=>{
+  if(serverResetBusy){e.preventDefault();return;}
+  const full=dlg.querySelector('.park-photo-full');
+  if(full){e.preventDefault();closeParkPhoto();return;}
+  photoSeq++;photoBusy=false;parkedPhotoSeq++;parkPhotoData=null;
+});
 window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue){try{state=F.upgrade(JSON.parse(e.newValue));if(!dlg.open)render();toast(T('Журнал обновлён в другой вкладке'));}catch(err){}}});
 
 setInterval(()=>{

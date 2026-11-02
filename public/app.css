@@ -6,6 +6,7 @@
   --signal:#FFC414; --signal-2:#EDB300; --signal-ink:#15161A; --signal-soft:#FFF0C0; --signal-line:rgba(21,22,26,.32);
   --z-vadi:#2F66DB; --z-teras:#0F8F67; --z-camli:#D95A1B; --z-service:#6A55C8; --z-other:#6E7279; --on-zone:#FFFFFF;
   --warn:#8F5400; --warn-bg:#FAEACB; --crit:#B42121; --crit-bg:#F8DEDA; --info:#2A5CC9; --info-bg:#E1E9FA; --ok:#0D7444; --ok-bg:#D8EEE1;
+  --status-driving:#F59E0B; --status-parked:#16A34A; --status-pending:#2563EB; --status-none:#8A8E94;
   --odo:#16171B; --odo-ink:#F3F1E9; --odo-dim:rgba(243,241,233,.3);
   --glass:#1A2230; --headlight:#FFF3BF; --taillight:#E0453A;
   --car-edge:rgba(255,255,255,.4); --car-edge-surface:rgba(21,22,26,.3);
@@ -28,6 +29,7 @@
   --signal:#FFC414; --signal-2:#FFD24D; --signal-ink:#15161A; --signal-soft:#382D0C; --signal-line:rgba(21,22,26,.35);
   --z-vadi:#4E81EE; --z-teras:#1FA779; --z-camli:#EC7334; --z-service:#8C78EC; --z-other:#80848B;
   --warn:#F0B14A; --warn-bg:#35280E; --crit:#FF7C72; --crit-bg:#3A1716; --info:#7FA6F6; --info-bg:#172440; --ok:#46C98D; --ok-bg:#112B1E;
+  --status-driving:#F59E0B; --status-parked:#34D399; --status-pending:#60A5FA; --status-none:#A1A1AA;
   --odo:#000000; --odo-ink:#EEECE4; --odo-dim:rgba(238,236,228,.28);
   --car-edge-surface:rgba(255,255,255,.32);
   --av1:#C9A43B; --av2:#5E8FD0; --av3:#4FA57C; --av4:#C9785C; --av-ink:#0F1012;
@@ -135,6 +137,17 @@ main{padding-block:22px calc(var(--tabbar-h) + 36px + env(safe-area-inset-bottom
 .pill.pending{background:var(--info-bg);color:var(--info)}
 .pill.service{background:var(--sunken);color:var(--z-service)}
 .pill.unknown{background:var(--sunken);color:var(--ink-2)}
+.pill.status-pill::before{width:10px;height:10px;background:var(--status-none)}
+.pill.status-driving::before{background:var(--status-driving)}
+.pill.status-parked::before{background:var(--status-parked)}
+.pill.status-pending::before{background:var(--status-pending)}
+.pill.status-none::before{background:var(--status-none)}
+.status-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--status-none);flex:none;vertical-align:middle}
+.status-dot.status-driving{background:var(--status-driving)}
+.status-dot.status-parked{background:var(--status-parked)}
+.status-dot.status-pending{background:var(--status-pending)}
+.status-dot.status-none{background:var(--status-none)}
+.status-text-driving{display:inline-flex;align-items:center;gap:6px;color:var(--status-driving)}
 .odo{display:inline-flex;align-items:center;gap:2px;font:700 14px/1 var(--f-mono)}
 .odo b{display:inline-grid;place-items:center;width:1.32em;height:1.75em;background:var(--odo);color:var(--odo-ink);border-radius:3px;font-weight:700}
 .odo b.lead{color:var(--odo-dim)}
@@ -376,6 +389,22 @@ details.more[open] summary{color:var(--ink)}
 .file-inp{font-size:14px;max-width:100%}
 .photo-prev{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:13px;color:var(--ok)}
 .photo-prev img{width:72px;height:72px;object-fit:cover;border-radius:10px}
+.park-photo-field{gap:9px}
+.park-photo-pick{position:relative;min-height:54px;height:56px;width:100%;font-size:16px}
+.park-photo-pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.park-photo-field .photo-prev{flex-wrap:wrap}
+.park-photo-field .photo-prev .linkbtn{min-height:44px}
+.park-photo-block{display:grid;gap:8px}
+.park-photo-thumb{display:block;width:100%;padding:0;border:0;border-radius:var(--r);overflow:hidden;background:var(--sunken);cursor:zoom-in}
+.park-photo-thumb img{display:block;width:100%;height:min(260px,62vw);max-height:260px;object-fit:cover}
+.park-photo-meta{color:var(--ink-2);font-size:13px}
+.photo-skeleton{height:150px;border-radius:var(--r);background:linear-gradient(100deg,var(--sunken) 35%,var(--line) 50%,var(--sunken) 65%)}
+html.park-photo-open,html.park-photo-open body{overflow:hidden}
+dialog.sheet:has(.park-photo-full){overflow:hidden}
+.park-photo-full{position:fixed;inset:0;width:100vw;height:100dvh;z-index:1000;background:#000;display:grid;place-items:center}
+.park-photo-full img{width:100%;height:100%;object-fit:contain}
+.park-photo-close{position:absolute;top:max(12px,env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));z-index:1;width:48px;height:48px;border:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.92);color:#15161A;cursor:pointer}
+.park-photo-close .ic{width:23px;height:23px}
 
 .opts{display:grid;gap:8px}
 .opts.z{grid-template-columns:repeat(auto-fit,minmax(88px,1fr))}
@@ -1141,3 +1170,12 @@ body.login main{padding:0}
 .w-when:has(input[value="other"]:checked) .w-date-inp{display:block}
 .d-wash{margin-top:14px}
 .d-wash .ic{width:20px;height:20px}
+
+/* Color only the requested vehicle-status indicators. */
+.calm .pill.status-pending::before{background:var(--status-pending)}
+.calm .pill.status-driving::before{background:var(--status-driving)}
+.calm .pill.status-parked::before{background:var(--status-parked)}
+.calm .pill.status-none::before{background:var(--status-none)}
+.dc-chip.status-chip-driving .status-dot{position:static;background:var(--status-driving)}
+.dc-chip.status-chip-driving .status-dot::after{display:none}
+.dc-chip .status-dot{width:10px;height:10px}

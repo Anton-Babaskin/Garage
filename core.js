@@ -144,17 +144,22 @@ function project(state){
   if(!state||state.version!==1||!Array.isArray(state.drivers)||state.drivers.length!==4||!Array.isArray(state.events))fail(T('Не удалось прочитать данные.'));
   if(new Set(state.drivers.map(d=>d.id)).size!==4||state.drivers.some(d=>!/^d[1-4]$/.test(d.id)||typeof d.name!=='string'||!d.name.trim()))fail(T('Некорректный список водителей.'));
   settingsOf(state);
-  const cars=CARS.map(meta=>{const det=(state.carDetails&&state.carDetails[meta.id])||{};return {...meta,model:String(det.model||''),plate:String(det.plate||''),photo:String(det.photo||''),color:HEX.test(det.color||'')?det.color:meta.color,status:'unconfigured',odo:null,location:null,spot:'',currentDriverId:null,lastPark:null,trip:null,lastTrip:null,updatedAt:null,pendingTransfer:null,keys:{kind:'unknown'},issues:[],lastOdoAt:null};});
+  const freshCar=meta=>{const det=(state.carDetails&&state.carDetails[meta.id])||{};return {...meta,model:String(det.model||''),plate:String(det.plate||''),photo:String(det.photo||''),color:HEX.test(det.color||'')?det.color:meta.color,hasPhoto:!!det.hasPhoto,status:'unconfigured',odo:null,location:null,spot:'',currentDriverId:null,lastPark:null,trip:null,lastTrip:null,updatedAt:null,pendingTransfer:null,keys:{kind:'unknown'},issues:[],lastOdoAt:null,resetIndex:-1};};
+  const cars=CARS.map(freshCar);
   const trips=[],audit=[],seen=new Set(),issues=new Map();
   function busy(id,except){return cars.some(c=>c.id!==except&&(c.currentDriverId===id||(c.pendingTransfer&&c.pendingTransfer.toId===id)));}
   for(const event of state.events){
     if(!event.id||seen.has(event.id))fail(T('В журнале повторяется запись.'));seen.add(event.id);
     if(!Number.isFinite(Date.parse(event.at)))fail(T('Некорректное время события.'));
     const car=cars.find(c=>c.id===event.carId);if(!car)fail(T('Неизвестная машина.'));
-    const d=driver(state,event.actorId),record={...event,distance:null};
+    const d=driver(state,event.actorId),record={...event,distance:null,auditIndex:audit.length};
     if(!isManager(event.actorId)&&!d)fail(T('Сначала выберите водителя.'));
     validatePhoto(event.photo);
-    if(event.kind==='wash'){
+    if(event.kind==='car_reset'){
+      if(!isManager(event.actorId))fail(T('Сброс машины доступен только руководству.'));
+      Object.assign(car,freshCar(CARS.find(c=>c.id===car.id)),{hasPhoto:false,resetIndex:audit.length});
+      delete car.lastWash;
+    }else if(event.kind==='wash'){
       if(car.status==='unconfigured')fail(T('Сначала внесите начальные данные машины.'));
       if(!WASH_TYPES.some(t=>t.id===event.washType))fail(T('Выберите, что сделали.'));
       if(!/^\d{4}-\d{2}-\d{2}$/.test(String(event.washDate||''))||!Number.isFinite(Date.parse(event.washDate+'T00:00:00Z')))fail(T('Укажите дату.'));
@@ -198,7 +203,7 @@ function project(state){
         validateLocation(event);
         if(event.parkedById&&!driver(state,event.parkedById))fail(T('Неизвестный водитель.'));
         car.status='parked';car.location=event.location;car.spot=event.spot;
-        car.lastPark={at:event.at,driverId:event.parkedById||null,driverName:event.parkedByName||null,initial:true};
+        car.lastPark={eventId:event.id,at:event.at,driverId:event.parkedById||null,driverName:event.parkedByName||null,initial:true};
         car.keys=keyState(state,event,true);
       }else{
         if(!d)fail(T('Сначала выберите водителя.'));
@@ -207,7 +212,7 @@ function project(state){
           if(busy(d.id,car.id))fail(T('За вами уже числится другая машина или ожидается передача. Сначала завершите действие.'));
           record.odoGap=car.odo==null?0:odo-car.odo;record.fromLocation=car.location;record.fromSpot=car.spot;
           car.trip={id:event.id,carId:car.id,startAt:event.at,startOdo:odo,fromLocation:car.location,fromSpot:car.spot,segments:[],segment:{driverId:d.id,driverName:event.actorName,startAt:event.at,startOdo:odo}};
-          car.status='driving';car.currentDriverId=d.id;car.location=null;car.spot='';car.keys=heldKeys(event,d.id,event.actorName);
+          car.status='driving';car.currentDriverId=d.id;car.location=null;car.spot='';car.hasPhoto=false;car.keys=heldKeys(event,d.id,event.actorName);
         }else if(event.kind==='handover_accept'){
           const pending=car.pendingTransfer;
           if(!pending||pending.id!==event.requestId)fail(T('Эта передача уже завершена или отменена.'));
@@ -234,9 +239,9 @@ function project(state){
               car.trip.segments.push(segment);car.trip.segment={driverId:target.id,driverName:event.toName,startAt:event.at,startOdo:odo};car.currentDriverId=target.id;car.keys=heldKeys(event,target.id,event.toName);
             }else{
               validateLocation(event);car.trip.segments.push(segment);
-              const completed={...car.trip,endAt:event.at,endOdo:odo,toLocation:event.location,spot:event.spot,distance:odo-car.trip.startOdo,parkedById:d.id,parkedByName:event.actorName};delete completed.segment;
+               const completed={...car.trip,endAt:event.at,endOdo:odo,toLocation:event.location,spot:event.spot,distance:odo-car.trip.startOdo,parkedById:d.id,parkedByName:event.actorName,auditIndex:audit.length};delete completed.segment;
               trips.push(completed);car.lastTrip=completed;car.trip=null;car.status='parked';car.currentDriverId=null;car.location=event.location;car.spot=event.spot;
-              car.lastPark={at:event.at,driverId:d.id,driverName:event.actorName,initial:false};car.keys=keyState(state,event,true);
+               car.lastPark={eventId:event.id,at:event.at,driverId:d.id,driverName:event.actorName,initial:false};car.keys=keyState(state,event,true);
             }
           }
         }
@@ -245,10 +250,11 @@ function project(state){
     }else fail(T('Неизвестное действие.'));
     car.updatedAt=event.at;audit.push(record);
   }
+  for(const car of cars)car.hasPhoto=car.status==='parked'&&!!((state.carDetails||{})[car.id]||{}).hasPhoto;
   return {cars,trips,audit};
 }
 function transact(state,command,now){
-  project(state);const d=driver(state,command.actorId),target=driver(state,command.toId),keyDriver=driver(state,command.keyDriverId||command.actorId);
+  const current=project(state);const d=driver(state,command.actorId),target=driver(state,command.toId),keyDriver=driver(state,command.keyDriverId||command.actorId);
   const event={id:command.id||('e-'+Date.now()+'-'+Math.random().toString(36).slice(2,10)),at:now||new Date().toISOString(),kind:command.kind,carId:command.carId,actorId:command.actorId,actorName:d?d.name:(managerName(command.actorId)||T('Руководитель')),odo:(ODO_EVENTS.has(command.kind)||command.kind==='odo_fix')?parseOdo(command.odo):null,location:command.location||null,spot:String(command.spot||'').trim().slice(0,160),note:String(command.note||'').trim().slice(0,250)};
   if(command.toId){event.toId=command.toId;event.toName=target?target.name:'';}
   if(command.requestId)event.requestId=command.requestId;
@@ -258,7 +264,12 @@ function transact(state,command,now){
   if(command.washType)event.washType=String(command.washType);
   if(command.washDate)event.washDate=String(command.washDate).slice(0,10);
   if(command.issueId)event.issueId=command.issueId;
-  if(command.photo){validatePhoto(command.photo);event.photo=command.photo;}
+  if(command.kind==='checkout'||command.kind==='park'){
+    if(event.odo>2000000)fail(T('Укажите пробег от 0 до 2 000 000 км.'));
+    const car=current.cars.find(c=>c.id===command.carId);
+    if(car&&car.odo!==null&&Math.abs(event.odo-car.odo)>3000)fail(tpl(T('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег'),{n:car.odo}));
+  }
+  if(command.photo&&command.kind!=='park'){validatePhoto(command.photo);event.photo=command.photo;}
   if(command.kind==='park'&&(!command.keyKind||command.keyKind==='unknown'))fail(T('Укажите, где оставили ключи.'));
   const next=upgrade(state);next.events.push(event);project(next);return next;
 }
@@ -289,23 +300,24 @@ function attention(state,now){
     if(car.status==='parked'&&car.keys&&car.keys.kind==='driver')result.push({kind:'keys',sev:'info',icon:'key',carId:car.id,title:T('Ключи от ')+car.name+T(' у водителя'),text:(driver(state,car.keys.driverId)||{}).name+T(' · машина: ')+locationName(car.location)+(car.spot?', '+car.spot:''),overdue:false,actorIds:[car.keys.driverId],at:car.keys.at||''});
   }
   for(const e of p.audit){
-    if(e.kind!=='checkout'||!(e.odoGap>0)||date-Date.parse(e.at)>7*864e5)continue;
+    if(e.kind!=='checkout'||!(e.odoGap>0)||date-Date.parse(e.at)>7*864e5||!afterReset(p,e))continue;
     const car=p.cars.find(c=>c.id===e.carId);
     result.push({kind:'gap',sev:'warn',icon:'alert',carId:e.carId,title:car.name+': +'+e.odoGap+T(' км без записи'),text:T('Пробег вырос между записями. Выехал ')+e.actorName+', '+shortStamp(e.at),overdue:false,actorIds:[],at:e.at});
   }
   result.sort((a,b)=>(SEV_ORDER[a.sev]-SEV_ORDER[b.sev])||(String(b.at)>String(a.at)?1:String(b.at)<String(a.at)?-1:0));
   return result;
 }
+function afterReset(p,record){const car=p.cars.find(c=>c.id===record.carId);return record.auditIndex>car.resetIndex;}
 function stats(state,days,now){
   const p=project(state),end=now==null?Date.now():Number(new Date(now)),start=end-days*864e5;
   const segs=[];
-  p.trips.forEach(t=>t.segments.forEach(s=>segs.push({carId:t.carId,driverId:s.driverId,distance:s.distance,endAt:s.endAt})));
+  p.trips.filter(t=>afterReset(p,t)).forEach(t=>t.segments.forEach(s=>segs.push({carId:t.carId,driverId:s.driverId,distance:s.distance,endAt:s.endAt})));
   p.cars.forEach(c=>{if(c.trip)c.trip.segments.forEach(s=>segs.push({carId:c.id,driverId:s.driverId,distance:s.distance,endAt:s.endAt}));});
   const inPeriod=t=>{const x=Date.parse(t);return x>=start&&x<=end;};
   const periodSegs=segs.filter(s=>inPeriod(s.endAt));
-  const gaps=p.audit.filter(e=>e.kind==='checkout'&&e.odoGap>0&&inPeriod(e.at));
+  const gaps=p.audit.filter(e=>e.kind==='checkout'&&e.odoGap>0&&inPeriod(e.at)&&afterReset(p,e));
   const sum=a=>a.reduce((x,y)=>x+y,0);
-  const cars=p.cars.map(c=>{const sg=periodSegs.filter(s=>s.carId===c.id),gp=gaps.filter(g=>g.carId===c.id),logged=sum(sg.map(s=>s.distance)),unlogged=sum(gp.map(g=>g.odoGap));return {car:c,logged,unlogged,total:logged+unlogged,trips:p.trips.filter(t=>t.carId===c.id&&inPeriod(t.endAt)).length};});
+  const cars=p.cars.map(c=>{const sg=periodSegs.filter(s=>s.carId===c.id),gp=gaps.filter(g=>g.carId===c.id),logged=sum(sg.map(s=>s.distance)),unlogged=sum(gp.map(g=>g.odoGap));return {car:c,logged,unlogged,total:logged+unlogged,trips:p.trips.filter(t=>t.carId===c.id&&inPeriod(t.endAt)&&afterReset(p,t)).length};});
   const drivers=state.drivers.map(d=>{const sg=periodSegs.filter(s=>s.driverId===d.id);return {driver:d,km:sum(sg.map(s=>s.distance)),trips:sg.length};});
   const key=t=>{const x=localParts(t);return x.year+'-'+x.month+'-'+x.day;};
   const daily=[];for(let i=days-1;i>=0;i--){const t=end-i*864e5;daily.push({key:key(t),ts:t,km:0});}
@@ -317,12 +329,12 @@ const DEMO_DETAILS={bmw:{model:'iX',plate:'34 ML 5050',color:''},audi:{model:'A6
 function driverStats(state,did,days,now){
   const p=project(state),end=now==null?Date.now():Number(new Date(now)),start=end-days*864e5;
   const segs=[];
-  p.trips.forEach(t=>t.segments.forEach(s=>segs.push({carId:t.carId,driverId:s.driverId,distance:s.distance,startAt:s.startAt,endAt:s.endAt})));
+  p.trips.filter(t=>afterReset(p,t)).forEach(t=>t.segments.forEach(s=>segs.push({carId:t.carId,driverId:s.driverId,distance:s.distance,startAt:s.startAt,endAt:s.endAt})));
   p.cars.forEach(c=>{if(c.trip)c.trip.segments.forEach(s=>segs.push({carId:c.id,driverId:s.driverId,distance:s.distance,startAt:s.startAt,endAt:s.endAt}));});
   const mine=segs.filter(s=>s.driverId===did&&Date.parse(s.endAt)>=start&&Date.parse(s.endAt)<=end);
   const byCar=p.cars.map(c=>{const l=mine.filter(s=>s.carId===c.id);return {car:c,km:l.reduce((a,s)=>a+s.distance,0),trips:l.length};});
   const timeMs=mine.reduce((a,s)=>a+(Date.parse(s.endAt)-Date.parse(s.startAt)),0);
-  const audit=p.audit.filter(e=>Date.parse(e.at)>=start&&Date.parse(e.at)<=end);
+  const audit=p.audit.filter(e=>Date.parse(e.at)>=start&&Date.parse(e.at)<=end&&afterReset(p,e));
   return {
     km:mine.reduce((a,s)=>a+s.distance,0),trips:mine.length,timeMs,byCar,
     parks:audit.filter(e=>e.kind==='park'&&e.actorId===did).length,
@@ -409,5 +421,5 @@ function demoState(now){
   sv('skoda','kasko',30,null,61000,'Axa Sigorta','','manager');
   return s;
 }
-root.FleetCore={WASH_TYPES,washName,DEMO_PLACES,MANAGERS,isManager,managerName,GEO_BOX,parseGeo,setPlace,normPlaces,inGeoBox,DEMO_DETAILS,TEAM,driverStats,SERVICE_TYPES,serviceType,serviceStatus,addServiceRecord,deleteServiceRecord,setIntervals,intervalOf,serviceCosts,todayStr,normService,CARS,LOCATIONS,PARKINGS,ISSUE_TYPES,emptyState,upgrade,demoState,project,transact,renameDriver,parseOdo,driver,location,locationName,issueName,issueType,keyLabel,setSettings,setCarDetails,settingsOf,attention,stats,localParts};
+root.FleetCore={WASH_TYPES,washName,DEMO_PLACES,MANAGERS,isManager,managerName,GEO_BOX,parseGeo,setPlace,normPlaces,inGeoBox,DEMO_DETAILS,TEAM,driverStats,SERVICE_TYPES,serviceType,serviceStatus,addServiceRecord,deleteServiceRecord,setIntervals,intervalOf,serviceCosts,todayStr,normService,CARS,LOCATIONS,PARKINGS,ISSUE_TYPES,emptyState,upgrade,demoState,project,transact,renameDriver,parseOdo,driver,location,locationName,issueName,issueType,keyLabel,setSettings,setCarDetails,settingsOf,attention,stats,localParts,validatePhoto};
 })(typeof window!=='undefined'?window:globalThis);

@@ -1,3 +1,3 @@
 - [Проверка публикации](publishing-checks.md) — наличие DATABASE_URL не подтверждает production-базу; отличать старую работающую сборку от новой упавшей.
-- [Браузерные проверки](browser-checks.md) — доступность testing меняется; APIRequestContext и браузер могут по-разному отправлять Secure-cookie на HTTP loopback.
+- [Браузерные проверки](browser-checks.md) — Secure-cookie на loopback, доступность testing; удалять временные runtime и порты после изолированных проверок.
 - [Аудит зависимостей](dependency-audits.md) — проверять оба lockfile: старый pnpm-граф может содержать пакеты, которых нет в npm-зависимостях сервера.

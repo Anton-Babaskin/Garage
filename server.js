@@ -67,6 +67,39 @@ function writeJSON(name, obj) {
   fs.renameSync(tmp, p);
   return Promise.resolve();
 }
+/* Фото места живут отдельно от журнала и его резервных копий. */
+async function savePhoto(id, value) {
+  const name = 'photo:' + id;
+  if (!PG) return writeJSON(name, value);
+  const p = CHAIN.then(() => PG.query('INSERT INTO garage_kv (k, v, t) VALUES ($1, $2, now()) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v, t = now()', [name, JSON.stringify(value)]));
+  CHAIN = p.catch(e => log('photo write error', id, e.message));
+  await p; CACHE[name] = value;
+}
+async function deletePhoto(id) {
+  const name = 'photo:' + id;
+  if (PG) {
+    const p = CHAIN.then(() => PG.query('DELETE FROM garage_kv WHERE k = $1', [name]));
+    CHAIN = p.catch(e => log('photo delete error', id, e.message));
+    await p; delete CACHE[name];
+  } else { try { fs.unlinkSync(file(name)); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
+}
+function currentPhoto(id, state) {
+  const car = F.project(state).cars.find(c => c.id === id);
+  if (!car || car.status !== 'parked' || !car.lastPark) return null;
+  let rec;
+  try { rec = readJSON('photo:' + id, null); }
+  catch (e) { log('photo read failed', id); return null; }
+  return rec && rec.eventId === car.lastPark.eventId ? rec : null;
+}
+function clientState(state) {
+  const next = JSON.parse(JSON.stringify(state));
+  for (const c of F.CARS) next.carDetails[c.id] = Object.assign({}, next.carDetails[c.id], { hasPhoto: !!currentPhoto(c.id, state) });
+  return next;
+}
+let MUTATIONS = Promise.resolve();
+function mutate(run) {
+  const p = MUTATIONS.then(run); MUTATIONS = p.catch(() => {}); return p;
+}
 function initialState() {
   const s = F.emptyState();
   s.carDetails = JSON.parse(JSON.stringify(F.DEMO_DETAILS));
@@ -171,16 +204,66 @@ const OPS = {
   renameDriver: { mgr: true, run: (s, u, [id, name]) => F.renameDriver(s, String(id), name) },
   restore: { mgr: true, run: (s, u, [st]) => { const n = F.upgrade(st); if (!n || !Array.isArray(n.events)) throw new Error('Некорректная копия.'); n.isDemo = false; return n; } }
 };
-function applyOp(user, op, args) {
+async function applyOp(user, op, args) {
   const def = OPS[op]; if (!def) { const e = new Error('Неизвестное действие.'); e.code = 400; throw e; }
   if (def.mgr && !user.mgr) { const e = new Error('Это действие доступно только руководству.'); e.code = 403; throw e; }
   const next = def.run(DB.state, user, Array.isArray(args) ? args : []);
-  if (op === 'restore') backup('before-restore', DB).catch(e => log('backup error', e.message));
-  DB = { v: DB.v + 1, state: next };
-  const saved = writeJSON('state.json', DB);
+  if (op === 'restore') await backup('before-restore', DB);
+  for (const d of Object.values(next.carDetails || {})) delete d.hasPhoto;
+  const db = { v: DB.v + 1, state: next };
+  try { await writeJSON('state.json', db); }
+  catch (e) { if (PG) CACHE['state.json'] = DB; e.code = 503; e.message = T('Не удалось сохранить на сервере. Попробуйте ещё раз.'); throw e; }
+  const cmd = op === 'transact' && args && args[0];
+  let photoWarning;
+  if (cmd && ['park', 'checkout', 'car_reset'].includes(cmd.kind)) {
+    try {
+      if (cmd.kind === 'park' && cmd.photo) {
+        F.validatePhoto(cmd.photo);
+        const event = next.events[next.events.length - 1];
+        await savePhoto(cmd.carId, { photo: cmd.photo, actorId: user.id, actorName: user.name, at: event.at, location: event.location, eventId: event.id });
+      } else await deletePhoto(cmd.carId);
+    } catch (e) {
+      photoWarning = T('Действие сохранено, но фото места не удалось обновить.');
+      log('photo update failed', cmd.carId);
+      try { await deletePhoto(cmd.carId); } catch (e2) { log('photo cleanup failed', cmd.carId); }
+    }
+  }
+  DB = db;
   const audit = JSON.stringify({ t: new Date().toISOString(), user: user.id, op, kind: op === 'transact' && args && args[0] ? args[0].kind : undefined, car: op === 'transact' && args && args[0] ? args[0].carId : undefined });
   if (PG) console.log('audit', audit); else fs.appendFile(file('audit.log'), audit + '\n', () => {});
-  return { db: DB, saved };
+  return { db: DB, photoWarning };
+}
+async function resetAfterTests(user, confirmation) {
+  if (user.id !== 'anton') throw Object.assign(new Error(T('Сбросить всё может только Антон.')), { code: 403 });
+  if (confirmation !== 'СБРОС' && confirmation !== 'SIFIRLA') throw Object.assign(new Error(T('Введите слово подтверждения.')), { code: 422 });
+  const key = 'backup:before-reset-' + new Date().toISOString() + '-' + crypto.randomBytes(4).toString('hex');
+  const state = F.upgrade(DB.state);
+  state.events = []; state.isDemo = false; state.service.records = [];
+  for (const d of Object.values(state.carDetails || {})) delete d.hasPhoto;
+  const next = { v: DB.v + 1, state };
+  if (PG) {
+    await CHAIN;
+    const client = await PG.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('INSERT INTO garage_kv (k, v) VALUES ($1, $2)', [key, JSON.stringify(DB)]);
+      await client.query('INSERT INTO garage_kv (k, v, t) VALUES ($1, $2, now()) ON CONFLICT (k) DO UPDATE SET v = EXCLUDED.v, t = now()', ['state.json', JSON.stringify(next)]);
+      await client.query("DELETE FROM garage_kv WHERE k LIKE 'photo:%'");
+      await client.query('COMMIT');
+      CACHE['state.json'] = next;
+      for (const k of Object.keys(CACHE)) if (k.startsWith('photo:')) delete CACHE[k];
+    } catch (e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+  } else {
+    await writeJSON(key, DB);
+    await writeJSON('state.json', next);
+    for (const name of fs.readdirSync(DATA).filter(n => n.startsWith('photo:'))) {
+      try { fs.unlinkSync(file(name)); } catch (e) { log('photo cleanup failed'); }
+    }
+  }
+  DB = next;
+  log('audit', JSON.stringify({ user: user.id, op: 'resetAfterTests', backup: key }));
+  return DB;
 }
 
 /* ───── резервные копии ───── */
@@ -189,7 +272,7 @@ async function backup(tag, snap) {
     const key = 'backup:state-' + new Date().toISOString().slice(0, 10) + (tag ? '-' + tag + '-' + Date.now() : ''), text = JSON.stringify(snap || DB);
     await CHAIN;
     await PG.query('INSERT INTO garage_kv (k, v) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING', [key, text]);
-    const r = await PG.query("SELECT k FROM garage_kv WHERE k LIKE 'backup:%' ORDER BY k");
+    const r = await PG.query("SELECT k FROM garage_kv WHERE k LIKE 'backup:state-%' ORDER BY k");
     const extra = r.rows.length - BACKUP_KEEP;
     for (let i = 0; i < extra; i++) await PG.query('DELETE FROM garage_kv WHERE k = $1', [r.rows[i].k]);
     return;
@@ -290,6 +373,16 @@ const server = http.createServer(async (req, res) => {
     if (!ses && req.method === 'GET' && p === '/api/me') return send(res, 200, { user: null });
     if (!ses) return send(res, 401, { error: 'Войдите заново.' }, { 'Set-Cookie': cookie('', 0) });
     const me = ses.user;
+    if (req.method === 'GET' && p.startsWith('/api/photo/')) {
+      const id = p.slice('/api/photo/'.length);
+      if (!F.CARS.some(c => c.id === id)) return send(res, 404, { error: T('Фото места не найдено.') });
+      const rec = currentPhoto(id, DB.state);
+      if (!rec) return send(res, 404, { error: T('Фото места не найдено.') });
+      const body = JSON.stringify(rec), etag = '"' + tokenHash(body) + '"';
+      const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', ETag: etag, Vary: 'Cookie' };
+      if (req.headers['if-none-match'] === etag) return send(res, 304, '', h);
+      return send(res, 200, body, h);
+    }
     if (req.method === 'GET' && p === '/api/users') return send(res, 200, { users: userList() });
     if (req.method === 'GET' && p === '/api/site-link') {
       if (!me.mgr) return send(res, 403, { error: 'Только для руководства.' });
@@ -300,16 +393,25 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/me') return send(res, 200, { user: me });
     if (req.method === 'GET' && p === '/api/state') {
       if (url.searchParams.get('v') === String(DB.v)) return send(res, 200, { v: DB.v, same: true });
-      return send(res, 200, { v: DB.v, state: DB.state });
+      return send(res, 200, { v: DB.v, state: clientState(DB.state) });
     }
     if (req.method === 'POST' && p === '/api/op') {
       const b = await readBody(req);
       let r;
-      try { r = applyOp(me, String(b.op || ''), b.args); }
+      try { r = await mutate(() => applyOp(me, String(b.op || ''), b.args)); }
       catch (e) { return send(res, e.code || 422, { error: e.message || 'Не удалось сохранить.' }); }
-      try { await r.saved; } catch (e) { log('save failed', e.message); return send(res, 503, { error: 'Не удалось сохранить на сервере. Попробуйте ещё раз.' }); }
-      try { return send(res, 200, { v: r.db.v, state: r.db.state }); }
+      try { return send(res, 200, { v: r.db.v, state: clientState(r.db.state), photoWarning: r.photoWarning }); }
       catch (e) { return send(res, e.code || 422, { error: e.message || 'Не удалось сохранить.' }); }
+    }
+    if (req.method === 'POST' && p === '/api/reset') {
+      const b = await readBody(req);
+      try {
+        const db = await mutate(() => resetAfterTests(me, b.confirmation));
+        return send(res, 200, { v: db.v, state: clientState(db.state) });
+      } catch (e) {
+        log('reset failed', me.id);
+        return send(res, e.code || 503, { error: e.code ? e.message : T('Не удалось сохранить резервную копию и выполнить сброс. Данные не сброшены.') });
+      }
     }
     if (req.method === 'POST' && p === '/api/pin') {
       const b = await readBody(req), id = String(b.id || '');

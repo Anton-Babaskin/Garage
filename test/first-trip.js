@@ -16,24 +16,24 @@ module.exports = (ok, F) => {
   ok(rejects({ kind: 'checkout', carId: 'bmw', actorId: 'd2', odo: 0 }), 'другой водитель не может взять занятую машину');
   ok(rejects({ kind: 'checkout', carId: 'audi', actorId: 'anton', odo: 0 }), 'руководство не становится водителем');
   const take = JSON.stringify(state.events);
-  p = act({ kind: 'park', carId: 'bmw', actorId: 'd1', odo: 123456, location: 'vadi', keyKind: 'security' });
-  ok(car(p).status === 'parked' && car(p).odo === 123456 && car(p).location === 'vadi' && car(p).keys.kind === 'security', 'первая парковка сохраняет фактический пробег, место и ключи');
+  p = act({ kind: 'park', carId: 'bmw', actorId: 'd1', odo: 1200, location: 'vadi', keyKind: 'security' });
+  ok(car(p).status === 'parked' && car(p).odo === 1200 && car(p).location === 'vadi' && car(p).keys.kind === 'security', 'первая парковка сохраняет фактический пробег, место и ключи');
   ok(JSON.stringify(state.events.slice(0, 1)) === take, 'первая запись не переписывается при парковке');
-  p = act({ kind: 'checkout', carId: 'bmw', actorId: 'd2', odo: 123456 });
-  ok(car(p).trip.startOdo === 123456 && p.audit[2].odoGap === 0, 'следующий водитель начинает с последнего показания');
-  ok(rejects({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 123455, location: 'teras', keyKind: 'office' }), 'пробег по-прежнему нельзя уменьшить');
-  p = act({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 123481, location: 'teras', keyKind: 'office' });
+  p = act({ kind: 'checkout', carId: 'bmw', actorId: 'd2', odo: 1200 });
+  ok(car(p).trip.startOdo === 1200 && p.audit[2].odoGap === 0, 'следующий водитель начинает с последнего показания');
+  ok(rejects({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 1199, location: 'teras', keyKind: 'office' }), 'пробег по-прежнему нельзя уменьшить');
+  p = act({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 1225, location: 'teras', keyKind: 'office' });
   ok(p.trips[1].distance === 25, 'следующая поездка считает расстояние обычным образом');
   p = act({ kind: 'checkout', carId: 'audi', actorId: 'd3', odo: 85000 });
   ok(car(p, 'audi').trip.startOdo === 85000 && p.audit.at(-1).odoGap === 0, 'при первом выезде можно сразу указать текущий пробег без ложного сигнала');
-  ok(JSON.stringify(F.emptyState()) === original && F.project(F.upgrade(state)).cars.find(c => c.id === 'bmw').odo === 123481, 'пустой журнал не меняется, новый журнал повторно проигрывается');
+  ok(JSON.stringify(F.emptyState()) === original && F.project(F.upgrade(state)).cars.find(c => c.id === 'bmw').odo === 1225, 'пустой журнал не меняется, новый журнал повторно проигрывается');
 
   const source = fs.readFileSync(path.join(__dirname, '..', 'public/ui.js'), 'utf8');
   let sheet = '';
   const ui = {
     F, state: F.emptyState(), role: 'd1', NOW: Date.now(), T: s => s, esc: String, fmt: String,
     isMgr: F.isManager, nameOf: id => id, ic: () => '', carSVG: () => '', openIssues: () => [],
-    keysText: () => '', placeHTML: () => '', noteField: () => '', head: () => '', formEnd: () => '',
+    keysText: () => '', placeHTML: () => '', noteField: () => '', head: () => '', formEnd: () => '', statusDot: () => '',
     openSheet: html => { sheet = html; }, toast: () => { throw new Error('Неожиданная блокировка'); }
   };
   ui.P = F.project(ui.state);
@@ -50,7 +50,7 @@ module.exports = (ok, F) => {
   ok(sheet.includes('Последний пробег: <b>0 км</b>') && /id="f-odo"[^>]*value="0"/.test(sheet) && sheet.includes('data-kind="checkout"') && !sheet.includes('от руководителя'), 'форма первого выезда подставляет 0 без требования руководства');
   ui.state = state; ui.P = F.project(state);
   ui.actionSheet('checkout', 'bmw');
-  ok(/id="f-odo"[^>]*value="123481"/.test(sheet), 'следующий выезд подставляет реальное последнее показание, не 0');
+  ok(/id="f-odo"[^>]*value="1225"/.test(sheet), 'следующий выезд подставляет реальное последнее показание, не 0');
   ui.role = 'd3';
   ok(!ui.carActions(ui.carOf('skoda')).includes('data-act="checkout"'), 'карточка не предлагает занять вторую новую машину');
 };

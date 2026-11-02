@@ -32,6 +32,8 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   const F = ctx.FleetCore;
   try { const s = F.demoState(); ok(F.project(s).cars.length === 4, 'демо-журнал собирается, 4 машины'); } catch (e) { ok(false, 'ядро: ' + e.message); }
   try { require('./first-trip.js')(ok, F); } catch (e) { ok(false, 'первый выезд: ' + e.message); }
+  try { require('./parking.js').core(ok, F); } catch (e) { ok(false, 'паркинг и сброс: ' + e.message); }
+  try { await require('./parking.js').storage(ok, F); } catch (e) { ok(false, 'резервная копия до сброса: ' + e.message); }
 
   console.log('4. Сервер (временная папка, без DATABASE_URL)');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'garage-test-'));
@@ -117,15 +119,15 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok((await firstOp({ kind: 'checkout', carId: 'audi', odo: 0 })).status === 422, 'API: занятому водителю нельзя взять вторую новую машину');
     for (const args of [
       { kind: 'park', location: 'vadi', keyKind: 'security' },
-      { kind: 'park', odo: 123456, keyKind: 'security' },
-      { kind: 'park', odo: 123456, location: 'vadi' }
+      { kind: 'park', odo: 1200, keyKind: 'security' },
+      { kind: 'park', odo: 1200, location: 'vadi' }
     ]) ok((await firstOp(args)).status === 422, 'API: при первой парковке обязательны пробег, место и ключи');
-    first = await firstOp({ kind: 'park', odo: 123456, location: 'vadi', keyKind: 'security' });
-    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').odo === 123456, 'API: первая парковка сохранила фактическое показание');
-    first = await firstOp({ kind: 'checkout', odo: 123456 });
-    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').trip.startOdo === 123456, 'API: следующая поездка использует последнее показание');
-    ok((await firstOp({ kind: 'park', odo: 123455, location: 'teras', keyKind: 'office' })).status === 422, 'API: уменьшение пробега по-прежнему запрещено');
-    ok((await firstOp({ kind: 'park', odo: 123481, location: 'teras', keyKind: 'office' })).status === 200, 'API: следующая поездка завершается штатно');
+    first = await firstOp({ kind: 'park', odo: 1200, location: 'vadi', keyKind: 'security' });
+    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').odo === 1200, 'API: первая парковка сохранила фактическое показание');
+    first = await firstOp({ kind: 'checkout', odo: 1200 });
+    ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').trip.startOdo === 1200, 'API: следующая поездка использует последнее показание');
+    ok((await firstOp({ kind: 'park', odo: 1199, location: 'teras', keyKind: 'office' })).status === 422, 'API: уменьшение пробега по-прежнему запрещено');
+    ok((await firstOp({ kind: 'park', odo: 1225, location: 'teras', keyKind: 'office' })).status === 200, 'API: следующая поездка завершается штатно');
     let r = await call('a', '/api/op', { op: 'transact', args: [{ kind: 'init', carId: 'bmw', odo: 1000, location: 'vadi', keyKind: 'security' }] });
     ok(r.status === 200, 'руководство вносит машину');
     r = await call('d', '/api/op', { op: 'transact', args: [{ kind: 'checkout', carId: 'bmw', odo: 1000, actorId: 'd3' }] });
@@ -192,6 +194,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok(r.status === 429 && r.j.error === 'Неверный логин или пароль', 'неизвестный логин не выдаёт себя текстом ошибки или другой блокировкой');
     const restoreLogin = await call('a', '/api/login', { id: 'anton', pin: '582614' });
     ok(restoreLogin.status === 200, 'блокировка одного человека не мешает входу Антона');
+    await require('./parking.js').api({ ok, F, call, B, dir, jar, accessCookie });
     console.log('5а. Смена SITE_KEY (перезапуск только тестового сервера)');
     await stop();
     const rotated = crypto.randomBytes(6).toString('hex');
