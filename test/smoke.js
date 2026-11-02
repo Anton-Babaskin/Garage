@@ -138,6 +138,11 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok(r.status === 200 && F.project(r.j.state).cars.find(c => c.id === 'bmw').odo === 1040, 'руководство исправило пробег вручную');
     ok((await call('d', '/api/op', { op: 'transact', args: [{ kind: 'odo_fix', carId: 'bmw', odo: 5, note: 'x' }] })).status === 422, 'водитель не может исправить пробег');
     ok((await call('d', '/api/state?v=' + r.j.v)).j.same === true, 'опрос без изменений — пустой ответ');
+    const defaultOdo = F.project(r.j.state).cars.find(c => c.id === 'bmw').odo;
+    const autoCheckout = await call('d', '/api/op', { op: 'transact', args: [{ kind: 'checkout', carId: 'bmw', odo: String(defaultOdo) }] });
+    const autoPark = await call('d', '/api/op', { op: 'transact', args: [{ kind: 'park', carId: 'bmw', odo: String(defaultOdo), location: 'vadi', keyKind: 'security' }] });
+    ok(autoCheckout.status === 200 && autoPark.status === 200 && F.project(autoPark.j.state).cars.find(c => c.id === 'bmw').odo === defaultOdo, 'API: checkout и park с подставленным пробегом проходят без изменения числа');
+    r = autoPark;
     console.log('5. Пароли и совместимость PIN (только временные тестовые данные)');
     const year = 365 * 86400;
     const renewed = await call('d', '/api/me');

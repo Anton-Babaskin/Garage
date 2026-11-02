@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=28;
+const APP_VERSION=29;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -1009,11 +1009,12 @@ function formEnd(label,icon){
     T('<div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">Отмена</button><button class="btn btn-primary btn-lg" type="submit" id="f-submit">')+(icon?ic(icon):'')+label+'</button></div>';
 }
 function kmField(prev,prefill,kind){
-  const hint=prev==null?(kind==='checkout'?T('Первый выезд: можно оставить 0. Фактический пробег укажите при парковке.'):T('Текущий общий пробег с приборной панели')):kind==='checkout'||kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
+  const unchangedPark=kind==='park'&&prev!=null&&Number(prefill)===prev;
+  const hint=kind==='checkout'?T('Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте'):unchangedPark?T('Пробег не изменился. Проверьте одометр'):prev==null?T('Текущий общий пробег с приборной панели'):kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
   const maxLength=kind==='checkout'||kind==='park'?' maxlength="7"':'';
   return T('<div class="field"><label class="lbl" for="f-odo">Пробег с одометра')+(prev!=null?T('<span class="opt-note">последний: ')+fmt(prev)+'</span>':'')+'</label>'+
     '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric"'+maxLength+' pattern="[0-9 ]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
-    '<div class="hint" id="f-odo-hint">'+hint+'</div></div>';
+    '<div class="hint'+(unchangedPark?' warn':'')+'" id="f-odo-hint">'+hint+'</div></div>';
 }
 function locationField(){
   return T('<fieldset class="field"><legend class="lbl">Где оставили машину</legend><div class="opts z">')+F.LOCATIONS.map(l=>'<label class="opt z-'+l.tone+'"><input type="radio" name="location" value="'+l.id+'"><span class="opt-face">'+sign(l.id)+'<span>'+esc(l.name)+'</span></span></label>').join('')+'</div></fieldset>'+
@@ -1051,11 +1052,11 @@ function actionSheet(kind,id){
   if(kind==='park')ctx+=T('<div>В поездке с ')+tFmt.format(ts(c.trip.segment.startAt))+T(', получили на <b>')+fmt(c.trip.segment.startOdo)+T(' км</b></div>');
   if(kind==='init')ctx=T('<div>Начальная запись: с неё начнётся учёт этой машины</div>');
   if(!isMgr(role)&&kind!=='init')ctx=kind==='handover_accept'?'<div>'+T('Передаёт')+': <b>'+esc(c.pendingTransfer.fromName)+'</b></div>':'<div>'+T('Последний пробег')+': <b>'+(firstCheckout?'0 '+T('км'):c.odo==null?'—':fmt(c.odo)+' '+T('км'))+'</b></div>';
-  let body='<div class="ctx">'+ctx+'</div>';
+  let body=kind==='checkout'?'':'<div class="ctx">'+ctx+'</div>';
   if(kind==='handover_request'){
     body+=T('<fieldset class="field"><legend class="lbl">Кому передаёте</legend><div class="opts ppl">')+state.drivers.filter(d=>d.id!==role).map(d=>{const b=occupied(d.id,id);return '<label class="opt"><input type="radio" name="toId" value="'+d.id+'"'+(b?' disabled':'')+'><span class="opt-face">'+avatar(d.id)+'<span>'+esc(d.name)+'<span class="sub">'+(b?T('занят: ')+esc(b.name):T('свободен'))+'</span></span></span></label>';}).join('')+T('</div><div class="hint">Получатель подтвердит приём на своём экране.</div></fieldset>');
   }
-  body+=kmField(c.odo,firstCheckout?0:(kind==='checkout'||kind==='handover_accept')?c.odo:null,kind);
+  body+=kmField(c.odo,firstCheckout?0:(kind==='checkout'||kind==='park'||kind==='handover_accept')?c.odo:null,kind);
   if(kind==='park'||kind==='init'){
     body+=locationField()+keysField(kind==='init',kind==='init'?'unknown':(isMgr(role)?null:'security'));
     if(kind==='init')body+=T('<div class="field"><label class="lbl" for="f-parkedby">Кто поставил машину</label><select class="inp" id="f-parkedby" name="parkedById"><option value="">Пока неизвестно</option>')+state.drivers.map(d=>'<option value="'+d.id+'">'+esc(d.name)+'</option>').join('')+'</select></div>';
@@ -1492,11 +1493,16 @@ function kmHint(){
   const d=v-prev;
   if(protectedOdo&&Math.abs(d)>3000){h.className='hint err';h.textContent=tpl('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег',{n:fmt(prev)});return;}
   if(d<0){h.className='hint err';h.textContent=T('Меньше последней записи (')+fmt(prev)+T(' км). Проверьте одометр');return;}
-  if(kind==='checkout'){if(d===0){h.className='hint ok';h.textContent=T('Совпадает с последней записью');}else{h.className='hint warn';h.textContent='+'+fmt(d)+T(' км с последней записи. Руководитель увидит это как пробег без записи');}return;}
+  if(kind==='checkout'){if(d===0){h.className='hint';h.textContent=T('Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте');}else{h.className='hint warn';h.textContent='+'+fmt(d)+T(' км с последней записи. Руководитель увидит это как пробег без записи');}return;}
+  if(kind==='park'&&d===0){h.className='hint warn';h.textContent=T('Пробег не изменился. Проверьте одометр');return;}
   if(kind==='handover_accept'){h.className=d===0?'hint ok':'hint warn';h.textContent=d===0?T('Совпадает с пробегом при передаче'):'+'+fmt(d)+T(' км после запроса на передачу');return;}
   if(d>1500){h.className='hint warn';h.textContent='+'+fmt(d)+T(' км. Проверьте, нет ли лишней цифры');return;}
   h.className='hint ok';h.textContent='+'+fmt(d)+T(' км ')+(kind==='handover_request'?T('за вашу поездку'):T('за поездку'));
 }
+document.addEventListener('focusin',e=>{
+  const inp=e.target;
+  if(inp.id==='f-odo'&&(inp.dataset.kind==='checkout'||inp.dataset.kind==='park'))inp.select();
+});
 document.addEventListener('input',e=>{
   if(e.target.id==='f-odo')kmHint();
   if(e.target.id==='f-reset-word'){

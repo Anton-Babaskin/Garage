@@ -868,6 +868,8 @@ var TRD={
 "−1 этаж, место 7": "−1. kat, 7 numara",
 "−2 этаж, место 18": "−2. kat, 18 numara",
 "Фото места": "Park yeri fotoğrafı",
+"Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте": "Kilometre sayacıyla aynıysa onaylayın. Farklıysa dokunup düzeltin",
+"Пробег не изменился. Проверьте одометр": "Kilometre değişmedi. Kilometre sayacını kontrol edin",
 "Где стоит": "Park yeri",
 "<div class=\"sheet-actions\"><button class=\"btn btn-ghost\" data-act=\"car-reset-cancel\" data-car=\"": "<div class=\"sheet-actions\"><button class=\"btn btn-ghost\" data-act=\"car-reset-cancel\" data-car=\"",
 "\">Отмена</button><button class=\"btn btn-danger-fill btn-lg\" data-act=\"car-reset-confirm\" data-car=\"": "\">Vazgeç</button><button class=\"btn btn-danger-fill btn-lg\" data-act=\"car-reset-confirm\" data-car=\"",

@@ -33,24 +33,49 @@ module.exports = (ok, F) => {
   const ui = {
     F, state: F.emptyState(), role: 'd1', NOW: Date.now(), T: s => s, esc: String, fmt: String,
     isMgr: F.isManager, nameOf: id => id, ic: () => '', carSVG: () => '', openIssues: () => [],
-    keysText: () => '', placeHTML: () => '', noteField: () => '', head: () => '', formEnd: () => '', statusDot: () => '',
+    keysText: () => '', placeHTML: () => '', noteField: () => '', head: () => '', statusDot: () => '',
+    locationField: () => '', keysField: () => '', parkPhotoField: () => '', ts: t => Date.parse(t), tFmt: { format: () => '' },
     openSheet: html => { sheet = html; }, toast: () => { throw new Error('Неожиданная блокировка'); }
   };
   ui.P = F.project(ui.state);
   ui.carOf = id => ui.P.cars.find(c => c.id === id);
   ui.occupied = (id, except) => ui.P.cars.find(c => c.id !== except && (c.currentDriverId === id || c.pendingTransfer && c.pendingTransfer.toId === id));
   vm.createContext(ui);
-  for (const [start, end] of [['function carActions(', 'function carCard('], ['function viewMine(', 'function matchesEvent('], ['function kmField(', 'function locationField('], ['function actionSheet(', 'function simpleSheet(']]) {
+  for (const [start, end] of [['function carActions(', 'function carCard('], ['function viewMine(', 'function matchesEvent('], ['function formEnd(', 'function kmField('], ['function kmField(', 'function locationField('], ['function actionSheet(', 'function simpleSheet(']]) {
     vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), ui);
   }
   const list = ui.viewMine(), buttons = list.match(/<button[^>]*data-act="checkout"[^>]*>/g) || [];
   ok(buttons.length === 4 && buttons.every(b => !b.includes('disabled')), 'на экране водителя все четыре новые машины доступны для взятия');
   ok(ui.carActions(ui.carOf('bmw')).includes('data-act="checkout"'), 'в карточке новой машины тоже доступно «Взять машину»');
   ui.actionSheet('checkout', 'bmw');
-  ok(sheet.includes('Последний пробег: <b>0 км</b>') && /id="f-odo"[^>]*value="0"/.test(sheet) && sheet.includes('data-kind="checkout"') && !sheet.includes('от руководителя'), 'форма первого выезда подставляет 0 без требования руководства');
+  ok(!sheet.includes('class="ctx"') && /id="f-odo"[^>]*value="0"/.test(sheet) && sheet.includes('data-kind="checkout"') && !sheet.includes('от руководителя'), 'форма первого выезда подставляет 0 без дублирующей плашки и требования руководства');
   ui.state = state; ui.P = F.project(state);
   ui.actionSheet('checkout', 'bmw');
   ok(/id="f-odo"[^>]*value="1225"/.test(sheet), 'следующий выезд подставляет реальное последнее показание, не 0');
   ui.role = 'd3';
   ok(!ui.carActions(ui.carOf('skoda')).includes('data-act="checkout"'), 'карточка не предлагает занять вторую новую машину');
+  ui.role = 'd1';
+  ui.actionSheet('checkout', 'bmw');
+  const prefilled = () => sheet.match(/id="f-odo"[^>]*value="([^"]*)"/)[1];
+  ok(!sheet.includes('class="ctx"') && sheet.includes('Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте'), 'checkout: нет верхней плашки, под полем точная подсказка');
+  ok(/id="f-submit"[^>]*>Подтвердить выезд/.test(sheet) && !/id="f-submit"[^>]*disabled/.test(sheet), 'checkout: кнопка подтверждения активна сразу');
+  ui.state = F.transact(ui.state, { kind: 'checkout', carId: 'bmw', actorId: 'd1', odo: prefilled() });
+  ui.P = F.project(ui.state);
+  ui.actionSheet('park', 'bmw');
+  ok(prefilled() === '1225' && sheet.includes('Последний пробег: <b>1225 км</b>'), 'park: поле заполнено, верхняя плашка сохранена');
+  ok(sheet.includes('class="hint warn" id="f-odo-hint">Пробег не изменился. Проверьте одометр'), 'park: оранжевое предупреждение видно ещё до ввода');
+  ui.state = F.transact(ui.state, { kind: 'park', carId: 'bmw', actorId: 'd1', odo: prefilled(), location: 'vadi', keyKind: 'security' });
+  ok(F.project(ui.state).cars[0].status === 'parked' && F.project(ui.state).cars[0].odo === 1225, 'обе формы проходят с подставленным числом без ввода пробега');
+  const hint = {}, input = { value: '1225', dataset: { prev: '1225', kind: 'park' } };
+  ui.$ = sel => sel === '#f-odo' ? input : hint;
+  vm.runInContext(source.slice(source.indexOf('function kmHint('), source.indexOf("document.addEventListener('focusin'")), ui);
+  ui.kmHint();
+  ok(hint.className === 'hint warn' && hint.textContent === 'Пробег не изменился. Проверьте одометр', 'неизменённый пробег парковки остаётся предупреждением, не ошибкой');
+  input.value = '1226'; ui.kmHint();
+  ok(hint.className === 'hint ok', 'после изменения числа предупреждение парковки исчезает');
+  let onFocus, selections = 0;
+  ui.document = { addEventListener: (type, listener) => { if (type === 'focusin') onFocus = listener; } };
+  vm.runInContext(source.slice(source.indexOf("document.addEventListener('focusin'"), source.indexOf("document.addEventListener('input'")), ui);
+  for (const kind of ['checkout', 'park', 'handover_accept']) onFocus({ target: { id: 'f-odo', dataset: { kind }, select: () => { selections++; } } });
+  ok(selections === 2, 'select() выделяет всё число только в checkout и park, другие окна не меняются');
 };
