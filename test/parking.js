@@ -49,6 +49,21 @@ exports.core = (ok, F) => {
     { id: 'old-park', kind: 'park', carId: 'bmw', actorId: 'd1', actorName: 'Эркин', at: '2026-10-01T11:00:00Z', odo: 127484538383, location: 'vadi', keyKind: 'security', photo: PHOTO }
   ];
   ok(F.project(F.upgrade(legacy)).cars[0].odo === 127484538383 && legacy.events[1].photo === PHOTO, 'старые большие показания и старые фото в журнале проигрываются без новых проверок');
+  legacy.events.push({ id: 'old-next-take', kind: 'checkout', carId: 'bmw', actorId: 'd1', at: '2026-10-01T12:00:00Z', odo: 127484538383 });
+  const oldJournal = JSON.stringify(legacy.events);
+  const parkedLegacy = F.transact(legacy, { kind: 'park', carId: 'bmw', actorId: 'd1', odo: '127484538383', location: 'teras', keyKind: 'security' });
+  ok(F.project(parkedLegacy).cars[0].status === 'parked' && F.project(parkedLegacy).cars[0].odo === 127484538383, 'старый пробег вне диапазона не мешает парковке, если число не меняли');
+  ok(JSON.stringify(legacy.events) === oldJournal && JSON.stringify(parkedLegacy.events.slice(0, -1)) === oldJournal, 'исключение для парковки не исправляет старые данные и только дополняет журнал');
+  for (const [state, cmd] of [
+    [legacy, { kind: 'park', odo: 127484538384, actorId: 'd1', location: 'teras', keyKind: 'security' }],
+    [legacy, { kind: 'park', odo: 127484538383, actorId: 'd2', location: 'teras', keyKind: 'security' }],
+    [legacy, { kind: 'park', odo: 127484538383, actorId: 'd1', location: 'invalid', keyKind: 'security' }],
+    [parkedLegacy, { kind: 'checkout', odo: 127484538383, actorId: 'd1' }]
+  ]) {
+    let rejected = false;
+    try { F.transact(state, { carId: 'bmw', ...cmd }); } catch (e) { rejected = true; }
+    ok(rejected, 'исключение не разрешает новый ошибочный пробег, чужую парковку, неверное место или checkout вне диапазона: ' + cmd.kind + '/' + cmd.actorId);
+  }
 };
 
 exports.api = async ({ ok, F, call, B, dir, jar, accessCookie }) => {
@@ -119,6 +134,14 @@ exports.api = async ({ ok, F, call, B, dir, jar, accessCookie }) => {
   ok(!poll.j.same && poll.j.state.events.length === 0, 'другой телефон получает чистое состояние через обычный опрос');
   r = await call('a', '/api/reset', { confirmation: 'SIFIRLA' });
   ok(r.status === 200 && fs.readdirSync(dir).filter(n => n.startsWith('backup:before-reset-')).length === 2, 'турецкое подтверждение тоже работает, копии не перезаписываются');
+  const legacy = r.j.state;
+  legacy.events = [{ id: 'legacy-large-take', kind: 'checkout', carId: 'bmw', actorId: 'd1', at: '2026-10-01T12:00:00Z', odo: 127484538383 }];
+  const restored = await call('a', '/api/op', { op: 'restore', args: [legacy] });
+  ok(restored.status === 200, 'API: старый журнал с большим пробегом загружен только в изолированном тесте');
+  r = await op('new-d1', { kind: 'park', odo: '127484538384', location: 'teras', keyKind: 'security' });
+  ok(r.status === 422, 'API: новое большое показание по-прежнему запрещено');
+  r = await op('new-d1', { kind: 'park', odo: '127484538383', location: 'teras', keyKind: 'security' });
+  ok(r.status === 200 && F.project(r.j.state).cars[0].status === 'parked' && F.project(r.j.state).cars[0].odo === 127484538383 && JSON.stringify(r.j.state.events.slice(0, -1)) === JSON.stringify(legacy.events), 'API: парковка с неизменённым старым пробегом проходит без перезаписи истории');
 };
 
 exports.storage = async (ok, F) => {

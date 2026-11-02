@@ -73,6 +73,15 @@ module.exports = (ok, F) => {
   ok(hint.className === 'hint warn' && hint.textContent === 'Пробег не изменился. Проверьте одометр', 'неизменённый пробег парковки остаётся предупреждением, не ошибкой');
   input.value = '1226'; ui.kmHint();
   ok(hint.className === 'hint ok', 'после изменения числа предупреждение парковки исчезает');
+  input.dataset.prev = '127484538383'; input.value = '127484538383'; ui.kmHint();
+  ok(hint.className === 'hint warn' && hint.textContent === 'Пробег не изменился. Проверьте одометр', 'подсказка не запрещает неизменённое старое показание вне диапазона');
+  input.value = '127484538384'; ui.kmHint();
+  ok(hint.className === 'hint err', 'изменённое показание вне диапазона остаётся ошибкой');
+  ui.state = F.emptyState();
+  ui.state.events = [{ id: 'legacy-large-take', kind: 'checkout', carId: 'bmw', actorId: 'd1', at: '2026-10-01T12:00:00Z', odo: 127484538383 }];
+  ui.P = F.project(ui.state); ui.actionSheet('park', 'bmw');
+  ui.state = F.transact(ui.state, { kind: 'park', carId: 'bmw', actorId: 'd1', odo: prefilled(), location: 'teras', keyKind: 'security' });
+  ok(F.project(ui.state).cars[0].status === 'parked' && F.project(ui.state).cars[0].odo === 127484538383, 'форма парковки проходит с подставленным старым числом из 12 цифр без ввода');
   let onFocus, selections = 0;
   ui.document = { addEventListener: (type, listener) => { if (type === 'focusin') onFocus = listener; } };
   vm.runInContext(source.slice(source.indexOf("document.addEventListener('focusin'"), source.indexOf("document.addEventListener('input'")), ui);

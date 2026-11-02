@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=29;
+const APP_VERSION=30;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -1488,7 +1488,8 @@ function kmHint(){
   if(!txt){h.className='hint';h.textContent=T('Введите показание с приборной панели');return;}
   if(!/^\d+$/.test(txt)){h.className='hint err';h.textContent=T('Только цифры, без точек и букв');return;}
   const v=+txt;
-  if(protectedOdo&&(v<0||v>2000000)){h.className='hint err';h.textContent=T('Укажите пробег от 0 до 2 000 000 км.');return;}
+  const unchangedPark=kind==='park'&&prev!==null&&v===prev;
+  if(protectedOdo&&(v<0||v>2000000)&&!unchangedPark){h.className='hint err';h.textContent=T('Укажите пробег от 0 до 2 000 000 км.');return;}
   if(prev==null){h.className='hint';h.textContent=fmt(v)+T(' км');return;}
   const d=v-prev;
   if(protectedOdo&&Math.abs(d)>3000){h.className='hint err';h.textContent=tpl('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег',{n:fmt(prev)});return;}

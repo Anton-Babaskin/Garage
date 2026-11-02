@@ -265,8 +265,9 @@ function transact(state,command,now){
   if(command.washDate)event.washDate=String(command.washDate).slice(0,10);
   if(command.issueId)event.issueId=command.issueId;
   if(command.kind==='checkout'||command.kind==='park'){
-    if(event.odo>2000000)fail(T('Укажите пробег от 0 до 2 000 000 км.'));
     const car=current.cars.find(c=>c.id===command.carId);
+    const unchangedPark=command.kind==='park'&&car&&event.odo===car.odo;
+    if(event.odo>2000000&&!unchangedPark)fail(T('Укажите пробег от 0 до 2 000 000 км.'));
     if(car&&car.odo!==null&&Math.abs(event.odo-car.odo)>3000)fail(tpl(T('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег'),{n:car.odo}));
   }
   if(command.photo&&command.kind!=='park'){validatePhoto(command.photo);event.photo=command.photo;}
