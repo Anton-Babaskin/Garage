@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=30;
+const APP_VERSION=31;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -256,7 +256,7 @@ function tabs(){
 function tabAttr(t){const cur=t.act?MORE_VIEWS.indexOf(view)>=0:view===t.id;return (t.act?'data-act="'+t.act+'"':'data-view="'+t.id+'"')+(cur?' aria-current="page"':'');}
 function renderTop(){
   $('#top').innerHTML='<div class="wrap top-in">'+
-    T('<div class="brand"><span class="brand-mark" aria-hidden="true">P</span><span class="brand-txt"><span class="brand-name">Гараж <span class="ver">v')+APP_VERSION+T('</span></span><span class="brand-sub" data-clock>Стамбул · ')+tFmt.format(NOW)+'</span></span></div>'+
+    '<div class="brand"><span class="brand-mark" aria-hidden="true">P</span><span class="brand-txt"><span class="brand-name">'+T('Гараж')+' ' +(isMgr(role)?T('<span class="ver">v')+APP_VERSION+T('</span>'):'')+'</span><span class="brand-sub" data-clock>'+T('Стамбул · ')+tFmt.format(NOW)+'</span></span></div>'+
     T('<nav class="nav" aria-label="Разделы">')+tabs().map(t=>'<button class="navbtn" '+tabAttr(t)+'>'+ic(t.icon)+t.label+'</button>').join('')+'</nav>'+
     '<div class="top-end"><button class="lang-btn" data-act="lang" aria-label="Русский / Türkçe" title="Русский / Türkçe">'+ic('globe')+'<span>'+(LANG==='tr'?'TR':'RU')+'</span></button><button class="theme-btn" data-act="theme" aria-label="'+(theme==='dark'?T('Светлая тема'):T('Тёмная тема'))+'">'+ic(theme==='dark'?'sun':'moon')+'</button><button class="demo-chip" data-act="about">'+ic('info')+'<span>'+(state.isDemo?T('Пример'):T('Прототип'))+'<span class="lbl-long">'+(state.isDemo?T(' данных'):'')+'</span></span></button>'+
     T('<button class="role-btn" data-act="role" aria-label="Кто вы: ')+esc(nameOf(role))+T('. Сменить">')+avatar(role)+'<span class="nm">'+esc(nameOf(role))+'</span>'+ic('chev')+'</button></div></div>';
@@ -370,7 +370,7 @@ function carCard(c){
       (pend?'<div class="note info">'+ic('swap')+T('<span>Ждём принятия: <b>')+esc(pend.toName)+T('</b>. До принятия отвечает ')+esc(pend.fromName)+'</span></div>':'')+
       '<div class="cc-grid"><div class="cc-cell"><div class="lbl-s">'+(driving?T('Последнее показание'):T('Пробег'))+'</div><div class="cc-odo">'+odoHTML(c.odo)+'</div><div class="time">'+(c.lastOdoAt?esc(when(c.lastOdoAt)):'')+'</div></div>'+
       T('<div class="cc-cell"><div class="lbl-s">Поставил последним</div><div class="val">')+who+'</div><div class="time">'+(c.lastPark?esc(when(c.lastPark.at)):'')+'</div>'+(lastDriver&&lastDriver!==who?T('<div class="time">Последний водитель: ')+esc(lastDriver)+'</div>':'')+'</div></div>'+
-      (none?'':'<div class="cc-keys">'+ic('key')+T('<span class="faint">Ключи</span><b>')+esc(keysText(c))+'</b>'+(c.keys&&c.keys.note?'<span class="faint">· '+esc(c.keys.note)+'</span>':'')+(canKeys(c)?'<button class="linkbtn sm" data-act="keys" data-car="'+c.id+T('">Изменить</button>'):'')+'</div>')+
+      (none?'':'<div class="cc-keys">'+ic('key')+T('<span class="faint">Ключи</span><b class="')+(c.keys&&c.keys.kind==='driver'?'keys-driver':'')+'">'+esc(keysText(c))+'</b>'+(c.keys&&c.keys.note?'<span class="faint">· '+esc(c.keys.note)+'</span>':'')+(canKeys(c)?'<button class="linkbtn sm" data-act="keys" data-car="'+c.id+T('">Изменить</button>'):'')+'</div>')+
       issueChips(c,true)+
       (c.plate?'<div>'+plateHTML(c.plate)+'</div>':'')+
     '</div>'+
@@ -414,9 +414,9 @@ function bossWhere(c){
 }
 function bossKeys(c){
   if(c.status==='unconfigured')return '—';
-  if(c.status==='driving')return T('У водителя');
+  if(c.status==='driving')return '<b class="keys-driver">'+T('У водителя')+'</b>';
   const k=c.keys;if(!k||k.kind==='unknown')return T('Не отмечено');
-  if(k.kind==='driver')return '<b class="b-alert">'+T('У водителя: ')+esc(nameOf(k.driverId))+'</b>';
+  if(k.kind==='driver')return '<b class="b-alert keys-driver">'+T('У водителя: ')+esc(nameOf(k.driverId))+'</b>';
   return k.kind==='security'?T('На охране'):T('В офисе');
 }
 function bossRow(c){
@@ -838,16 +838,21 @@ if(SRV){
     const orig=F[op];F[op]=function(s){const args=Array.prototype.slice.call(arguments,1);const next=orig.apply(F,arguments);srvPush(op,args);return next;};
   });
 }
-function srvPush(op,args){SRV_PENDING.push({op,args:JSON.parse(JSON.stringify(args.map(a=>a===undefined?null:a)))});srvFlush();}
+const CONFIRM_KINDS=['checkout','park','handover_request','handover_accept','wash'];
+function srvPush(op,args){
+  const cmd=op==='transact'&&args[0],kind=cmd&&CONFIRM_KINDS.indexOf(cmd.kind)>=0?cmd.kind:'';
+  SRV_PENDING.push({op,args:JSON.parse(JSON.stringify(args.map(a=>a===undefined?null:a))),outcome:kind?{kind,carId:cmd.carId}:null});
+  srvFlush();
+}
 async function srvFlush(){
   if(SRV_BUSY)return;SRV_BUSY=true;let failed=false;
   while(SRV_PENDING.length){
     const it=SRV_PENDING[0];
-    try{const j=await api('/api/op',{op:it.op,args:it.args});SV=j.v;if(SRV_PENDING.length===1)state=F.upgrade(j.state);SRV_PENDING.shift();if(j.photoWarning)toast(T(j.photoWarning),true);}
+    try{const j=await api('/api/op',{op:it.op,args:it.args});SV=j.v;if(SRV_PENDING.length===1)state=F.upgrade(j.state);SRV_PENDING.shift();if(it.outcome)completeAction(it.outcome);if(j.photoWarning)toast(T(j.photoWarning),true);}
     catch(e){SRV_PENDING=[];failed=true;if(e.status===401){location.reload();return;}toast(T(e.message),true);try{await srvPull(true);}catch(e2){}}
   }
   SRV_BUSY=false;
-  {const rb=$('#f-submit'),ri=$('#f-reset-word');if(rb&&ri)rb.disabled=serverResetBusy||ri.value!==T('СБРОС')||SRV_PENDING.length>0||SRV_BUSY;}
+  {const rb=$('#f-submit'),ri=$('#f-reset-word');if(rb&&ri)rb.disabled=serverResetBusy||ri.value!==T('СБРОС')||SRV_PENDING.length>0||SRV_BUSY;else if(rb&&failed)rb.disabled=false;}
   if(!dlg.open||failed)render();
 }
 async function srvPull(force){
@@ -1000,10 +1005,28 @@ function openSheet(html){dlg.classList.remove('full');
   closeParkPhoto();
   photoSeq++;photoData=null;photoBusy=false;parkedPhotoSeq++;parkPhotoData=null;
   $('#sheetBody').innerHTML=html;
+  applyKeyboardHints($('#sheetBody'));
   if(!dlg.open){try{dlg.showModal();}catch(e){dlg.setAttribute('open','');}}
+  document.documentElement.classList.add('sheet-open');
+  updateSheetViewport();
   dlg.scrollTop=0;
 }
-function closeSheet(){dlg.classList.remove('full');closeParkPhoto();photoSeq++;photoData=null;photoBusy=false;parkedPhotoSeq++;parkPhotoData=null;dlg.style.transform='';if(dlg.open){try{dlg.close();}catch(e){dlg.removeAttribute('open');}}}
+function closeSheet(){dlg.classList.remove('full');closeParkPhoto();photoSeq++;photoData=null;photoBusy=false;parkedPhotoSeq++;parkPhotoData=null;dlg.style.transform='';document.documentElement.classList.remove('sheet-open');if(dlg.open){try{dlg.close();}catch(e){dlg.removeAttribute('open');}}}
+function applyKeyboardHints(root){
+  if(!root)return;
+  root.querySelectorAll('input[name="odo"],#f-odo,#f-svcodo').forEach(el=>{el.setAttribute('inputmode','numeric');el.setAttribute('pattern','[0-9]*');el.setAttribute('enterkeyhint','done');});
+  root.querySelectorAll('input[name="spot"],input[name="place"],input[name="note"],textarea[name="note"],#f-spot,#f-place,#f-note').forEach(el=>{el.setAttribute('enterkeyhint','done');el.setAttribute('autocapitalize','sentences');});
+}
+function updateSheetViewport(){
+  if(!dlg||!dlg.open)return;
+  const vv=window.visualViewport;
+  if(vv){dlg.style.setProperty('--vvh',Math.max(120,vv.height)+'px');dlg.style.setProperty('--vvtop',Math.max(0,vv.offsetTop)+'px');}
+}
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize',updateSheetViewport);
+  window.visualViewport.addEventListener('scroll',updateSheetViewport);
+}
+dlg.addEventListener('close',()=>document.documentElement.classList.remove('sheet-open'));
 function formEnd(label,icon){
   return '<div class="form-err" id="f-err" role="alert" hidden></div><p class="form-note">'+ic('clock')+T('Автор и время запишутся автоматически</p>')+
     T('<div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">Отмена</button><button class="btn btn-primary btn-lg" type="submit" id="f-submit">')+(icon?ic(icon):'')+label+'</button></div>';
@@ -1013,7 +1036,7 @@ function kmField(prev,prefill,kind){
   const hint=kind==='checkout'?T('Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте'):unchangedPark?T('Пробег не изменился. Проверьте одометр'):prev==null?T('Текущий общий пробег с приборной панели'):kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
   const maxLength=kind==='checkout'||kind==='park'?' maxlength="7"':'';
   return T('<div class="field"><label class="lbl" for="f-odo">Пробег с одометра')+(prev!=null?T('<span class="opt-note">последний: ')+fmt(prev)+'</span>':'')+'</label>'+
-    '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric"'+maxLength+' pattern="[0-9 ]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
+    '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric"'+maxLength+' pattern="[0-9]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
     '<div class="hint'+(unchangedPark?' warn':'')+'" id="f-odo-hint">'+hint+'</div></div>';
 }
 function locationField(){
@@ -1122,7 +1145,7 @@ async function loadParkPhoto(id,seq){
 function carSheet(id){
   const c=carOf(id);if(!c)return;let rows='';
   if(c.status==='parked'){
-    rows+=T('<dt>Где</dt><dd>')+placeHTML(c.location,c.spot)+T('</dd><dt>Ключи</dt><dd>')+esc(keysText(c))+(c.keys&&c.keys.note?' · '+esc(c.keys.note):'')+'</dd>';
+    rows+=T('<dt>Где</dt><dd>')+placeHTML(c.location,c.spot)+T('</dd><dt>Ключи</dt><dd>')+'<span class="'+(c.keys&&c.keys.kind==='driver'?'keys-driver':'')+'">'+esc(keysText(c))+'</span>'+(c.keys&&c.keys.note?' · '+esc(c.keys.note):'')+'</dd>';
     if(c.lastPark)rows+=T('<dt>Поставил</dt><dd>')+esc(c.lastPark.driverName||T('не указано'))+', '+esc(when(c.lastPark.at))+'</dd>';
   }else if(c.status==='driving'){
     const seg=c.trip.segment;
@@ -1372,15 +1395,45 @@ function toast(msg,err){{const tEl=$('#toast'),host=dlg.open?dlg:document.body;i
   void t.offsetWidth;t.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('on'),3200);
 }
 function reportError(err){const el=$('#f-err');if(dlg.open&&el){el.textContent=dn(err.message);el.hidden=false;el.scrollIntoView({block:'nearest'});}else toast(err.message,true);}
+let confirmTimer;
+function confirmMessage(outcome){
+  if(outcome.kind==='wash')return T('Мойка записана');
+  const c=carOf(outcome.carId);if(!c)return T('Записано');
+  if(outcome.kind==='checkout'||outcome.kind==='handover_accept')return tpl('{car} у вас',{car:dn(c.name)});
+  if(outcome.kind==='park'){
+    const place=F.locationName(c.location)+(c.spot?', '+c.spot:'');
+    return tpl('{car} поставлена · {place}',{car:dn(c.name),place:dn(place)});
+  }
+  if(outcome.kind==='handover_request')return T('Запрос отправлен на экран получателя');
+  return T('Записано');
+}
+function showActionConfirm(outcome){
+  const el=$('#actionConfirm');if(!el)return;
+  el.innerHTML='<span class="confirm-mark">'+ic('check')+'</span><span class="confirm-text"></span>';
+  el.querySelector('.confirm-text').textContent=confirmMessage(outcome);
+  el.classList.remove('is-closing');el.hidden=false;clearTimeout(confirmTimer);
+  confirmTimer=setTimeout(()=>{
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){el.hidden=true;return;}
+    el.classList.add('is-closing');setTimeout(()=>{el.hidden=true;el.classList.remove('is-closing');},170);
+  },1200);
+}
+function completeAction(outcome){
+  closeSheet();render();showActionConfirm(outcome);
+}
 const DONE={wash:T('Мойка записана'),odo_fix:T('Пробег исправлен'),park:T('Парковка и ключи записаны'),car_reset:T('Машина сброшена'),handover_request:T('Запрос отправлен на экран получателя'),handover_accept:T('Получение подтверждено. Машина и ключи за вами'),checkout:T('Выезд записан. Машина за вами'),issue_report:T('Замечание добавлено на карточку'),issue_resolve:T('Замечание закрыто, история сохранена'),keys:T('Место ключей сохранено'),init:T('Начальные данные сохранены'),handover_cancel:T('Передача отменена'),handover_decline:T('Передача отклонена')};
 function runCommand(cmd){
   persist(F.transact(state,cmd));
   ui.flash={car:cmd.carId,t:Date.now()};
+  if(CONFIRM_KINDS.indexOf(cmd.kind)>=0){
+    if(SRV){const submit=$('#f-submit');if(submit)submit.disabled=true;return;}
+    completeAction({kind:cmd.kind,carId:cmd.carId});return;
+  }
   closeSheet();render();toast(DONE[cmd.kind]||T('Записано'));
 }
 function goView(v,opts){view=v;if(opts)Object.assign(ui,opts);render();window.scrollTo(0,0);}
 
 document.addEventListener('click',ev=>{
+  if(ev.target.closest&&ev.target.closest('#actionConfirm')){const confirm=$('#actionConfirm');confirm.hidden=true;confirm.classList.remove('is-closing');clearTimeout(confirmTimer);return;}
   const full=ev.target.closest&&ev.target.closest('.park-photo-full');
   if(full){closeParkPhoto();return;}
   if(serverResetBusy){ev.preventDefault();return;}
@@ -1503,6 +1556,17 @@ function kmHint(){
 document.addEventListener('focusin',e=>{
   const inp=e.target;
   if(inp.id==='f-odo'&&(inp.dataset.kind==='checkout'||inp.dataset.kind==='park'))inp.select();
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(inp.tagName)){
+    if(dlg.open)applyKeyboardHints(dlg);
+    setTimeout(()=>{if(document.activeElement===inp){if(dlg.open)updateSheetViewport();inp.scrollIntoView({block:'center'});}},90);
+  }
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'||e.isComposing||e.target.tagName==='TEXTAREA')return;
+  const t=e.target;
+  if(t.tagName==='INPUT'&&!/^(button|submit|reset|checkbox|radio|file|range|color|hidden)$/i.test(t.type||'text')){
+    e.preventDefault();t.blur();
+  }
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='f-odo')kmHint();

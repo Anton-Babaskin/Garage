@@ -7,6 +7,7 @@
   --z-vadi:#2F66DB; --z-teras:#0F8F67; --z-camli:#D95A1B; --z-service:#6A55C8; --z-other:#6E7279; --on-zone:#FFFFFF;
   --warn:#8F5400; --warn-bg:#FAEACB; --crit:#B42121; --crit-bg:#F8DEDA; --info:#2A5CC9; --info-bg:#E1E9FA; --ok:#0D7444; --ok-bg:#D8EEE1;
   --status-driving:#F59E0B; --status-parked:#16A34A; --status-pending:#2563EB; --status-none:#8A8E94;
+  --keys-driver:#F59E0B;
   --odo:#16171B; --odo-ink:#F3F1E9; --odo-dim:rgba(243,241,233,.3);
   --glass:#1A2230; --headlight:#FFF3BF; --taillight:#E0453A;
   --car-edge:rgba(255,255,255,.4); --car-edge-surface:rgba(21,22,26,.3);
@@ -30,6 +31,7 @@
   --z-vadi:#4E81EE; --z-teras:#1FA779; --z-camli:#EC7334; --z-service:#8C78EC; --z-other:#80848B;
   --warn:#F0B14A; --warn-bg:#35280E; --crit:#FF7C72; --crit-bg:#3A1716; --info:#7FA6F6; --info-bg:#172440; --ok:#46C98D; --ok-bg:#112B1E;
   --status-driving:#F59E0B; --status-parked:#34D399; --status-pending:#60A5FA; --status-none:#A1A1AA;
+  --keys-driver:#F59E0B;
   --odo:#000000; --odo-ink:#EEECE4; --odo-dim:rgba(238,236,228,.28);
   --car-edge-surface:rgba(255,255,255,.32);
   --av1:#C9A43B; --av2:#5E8FD0; --av3:#4FA57C; --av4:#C9785C; --av-ink:#0F1012;
@@ -37,7 +39,7 @@
   color-scheme:dark;
 }
 
-*{box-sizing:border-box}
+*{box-sizing:border-box;min-width:0}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 button,label,summary,a,select{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 var(--f-ui);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
@@ -215,7 +217,7 @@ button.ichip{cursor:pointer}
 .panel.tight .ent:last-child{border-bottom:0}
 .panel h3{margin:0 0 16px;font:600 12px/1.2 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);display:flex;justify-content:space-between;gap:8px}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.sel{height:40px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);color:var(--ink);font-weight:600;font-size:14px;padding:0 10px;max-width:100%}
+.sel{height:40px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);color:var(--ink);font-weight:600;font-size:16px;padding:0 10px;max-width:100%}
 .day{margin-top:22px}
 .day-h{display:flex;justify-content:space-between;gap:10px;font:600 11.5px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding-bottom:9px;border-bottom:1.5px solid var(--ink)}
 .ent{display:grid;grid-template-columns:48px 34px minmax(0,1fr) auto;gap:10px;align-items:start;padding:11px 0;border-bottom:1px solid var(--line)}
@@ -386,7 +388,7 @@ details.more summary::-webkit-details-marker{display:none}
 details.more summary .opt-note{margin-left:auto}
 details.more[open]{padding-bottom:14px}
 details.more[open] summary{color:var(--ink)}
-.file-inp{font-size:14px;max-width:100%}
+.file-inp{font-size:16px;max-width:100%}
 .photo-prev{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:13px;color:var(--ok)}
 .photo-prev img{width:72px;height:72px;object-fit:cover;border-radius:10px}
 .park-photo-field{gap:9px}
@@ -1179,3 +1181,36 @@ body.login main{padding:0}
 .dc-chip.status-chip-driving .status-dot{position:static;background:var(--status-driving)}
 .dc-chip.status-chip-driving .status-dot::after{display:none}
 .dc-chip .status-dot{width:10px;height:10px}
+
+/* Mobile entry safety: keep the familiar sheet, but make its usable viewport explicit. */
+html,body,dialog.sheet{overflow-x:clip}
+button,input,textarea,select{box-sizing:border-box;max-width:100%}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.wrap,.top-in,.brand,.brand-txt,.top-end,.ph,.stack,.layout,.panel,.cc-body,.cc-cell,
+.me,.me-hero,.me-meta,.actions,.field,.field>* ,form,.sheet-in,.sheet-head,.sheet-head>div,
+.sheet-actions,.sheet-acts,.sheet-actions>*{min-width:0}
+input:not(.inp),textarea:not(.inp),select:not(.inp){font-size:16px}
+html.sheet-open,html.sheet-open body{overflow:hidden}
+dialog.sheet{overscroll-behavior:contain;max-width:calc(100vw - 32px);max-height:min(var(--vvh,92dvh),940px)}
+dialog.sheet .sheet-in{min-width:0}
+.sheet-actions{position:sticky;bottom:0;z-index:2;padding:10px 0 max(10px,env(safe-area-inset-bottom,0px));background:linear-gradient(to bottom,transparent 0,var(--surface) 12px,var(--surface) 100%);margin-top:2px}
+.sheet-actions .btn{max-width:100%;white-space:normal;min-height:46px;height:auto;padding-block:10px}
+.sheet-acts{padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar{padding-bottom:max(env(safe-area-inset-bottom,0px),4px)}
+.x:focus{outline:none}
+.x:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+.cc-keys .keys-driver,.keys-driver{color:var(--keys-driver)!important}
+.drv .opts.chips input[name="keyKind"][value="driver"]:checked+.opt-face{background:var(--keys-driver);border-color:var(--keys-driver);color:var(--signal-ink)}
+.action-confirm{position:fixed;inset:0;z-index:120;display:grid;place-content:center;justify-items:center;gap:14px;padding:24px;text-align:center;background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(3px);cursor:pointer;animation:confirm-in .2s ease-out}
+.action-confirm[hidden]{display:none}
+.action-confirm .confirm-mark{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;background:var(--ok-bg);color:var(--ok);box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--ok) 28%,transparent)}
+.action-confirm .confirm-mark .ic{width:52px;height:52px;stroke-width:2.3}
+.action-confirm .confirm-text{max-width:min(34ch,calc(100vw - 48px));font:650 19px/1.3 var(--f-ui);color:var(--ink)}
+.action-confirm.is-closing{opacity:0;transition:opacity .16s ease}
+@keyframes confirm-in{from{opacity:0}to{opacity:1}}
+@media (max-width:759px){
+  dialog.sheet{position:fixed;top:auto;bottom:max(0px,calc(100dvh - var(--vvtop,0px) - var(--vvh,100dvh)));max-width:100vw;width:100%;max-height:min(94dvh,var(--vvh,94dvh));margin:0;border-radius:22px 22px 0 0}
+  dialog.sheet.full{top:var(--vvtop,0px);bottom:auto;height:var(--vvh,100dvh);max-height:var(--vvh,100dvh)}
+  .sheet-actions{padding-bottom:max(12px,env(safe-area-inset-bottom,0px))}
+}
+@media(prefers-reduced-motion:reduce){.action-confirm{animation:none!important}dialog[open]{animation:none!important}}

@@ -32,6 +32,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   const F = ctx.FleetCore;
   try { const s = F.demoState(); ok(F.project(s).cars.length === 4, 'демо-журнал собирается, 4 машины'); } catch (e) { ok(false, 'ядро: ' + e.message); }
   try { require('./first-trip.js')(ok, F); } catch (e) { ok(false, 'первый выезд: ' + e.message); }
+  try { await require('./mobile-forms.js')(ok); } catch (e) { ok(false, 'мобильные формы: ' + e.message); }
   try { require('./parking.js').core(ok, F); } catch (e) { ok(false, 'паркинг и сброс: ' + e.message); }
   try { await require('./parking.js').storage(ok, F); } catch (e) { ok(false, 'резервная копия до сброса: ' + e.message); }
 

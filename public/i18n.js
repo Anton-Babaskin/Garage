@@ -917,7 +917,12 @@ var TRD={
 "\" alt=\"Предпросмотр фото\"><span>Фото прикреплено</span><button type=\"button\" class=\"linkbtn sm\" data-act=\"photo-remove\">": "\" alt=\"Fotoğraf önizlemesi\"><span>Fotoğraf eklendi</span><button type=\"button\" class=\"linkbtn sm\" data-act=\"photo-remove\">",
 "<div class=\"ctx\">Машина вернётся в “Нет данных”: пробег, водитель, ключи, паркинг обнулятся. Журнал сохранится.</div>": "<div class=\"ctx\">Araç «Veri yok» durumuna dönecek: km, sürücü, anahtarlar ve park bilgisi sıfırlanacak. Kayıtlar korunacak.</div>",
 "<div class=\"ctx\">Сервер сначала сохранит резервную копию. Все машины станут «Нет данных»; пользователи, пароли, настройки и точки паркингов останутся.</div>": "<div class=\"ctx\">Sunucu önce bir yedek kaydedecek. Tüm araçlar «Veri yok» durumuna döner; kullanıcılar, şifreler, ayarlar ve otopark konumları korunur.</div>",
-"<div class=\"form-err\" id=\"f-err\" role=\"alert\" hidden></div><div class=\"sheet-actions\"><button class=\"btn btn-ghost\" type=\"button\" data-act=\"close\">Отмена</button><button class=\"btn btn-danger-fill btn-lg\" id=\"f-submit\" type=\"submit\" disabled>Сбросить всё</button></div></form>": "<div class=\"form-err\" id=\"f-err\" role=\"alert\" hidden></div><div class=\"sheet-actions\"><button class=\"btn btn-ghost\" type=\"button\" data-act=\"close\">Vazgeç</button><button class=\"btn btn-danger-fill btn-lg\" id=\"f-submit\" type=\"submit\" disabled>Tümünü sıfırla</button></div></form>"
+"<div class=\"form-err\" id=\"f-err\" role=\"alert\" hidden></div><div class=\"sheet-actions\"><button class=\"btn btn-ghost\" type=\"button\" data-act=\"close\">Отмена</button><button class=\"btn btn-danger-fill btn-lg\" id=\"f-submit\" type=\"submit\" disabled>Сбросить всё</button></div></form>": "<div class=\"form-err\" id=\"f-err\" role=\"alert\" hidden></div><div class=\"sheet-actions\"><button class=\"btn btn-ghost\" type=\"button\" data-act=\"close\">Vazgeç</button><button class=\"btn btn-danger-fill btn-lg\" id=\"f-submit\" type=\"submit\" disabled>Tümünü sıfırla</button></div></form>",
+"{car} у вас": "{car} sizde",
+"<span class=\"ver\">v": "<span class=\"ver\">v",
+"</span>": "</span>",
+"<span class=\"faint\">Ключи</span><b class=\"": "<span class=\"faint\">Anahtar</span><b class=\"",
+"{car} поставлена · {place}": "{car} park edildi · {place}"
 };
 var lang=null;
 try{lang=localStorage.getItem('garage-lang');}catch(e){}
