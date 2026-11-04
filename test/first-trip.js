@@ -21,7 +21,7 @@ module.exports = (ok, F) => {
   ok(JSON.stringify(state.events.slice(0, 1)) === take, 'первая запись не переписывается при парковке');
   p = act({ kind: 'checkout', carId: 'bmw', actorId: 'd2', odo: 1200 });
   ok(car(p).trip.startOdo === 1200 && p.audit[2].odoGap === 0, 'следующий водитель начинает с последнего показания');
-  ok(rejects({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 1199, location: 'teras', keyKind: 'office' }), 'пробег по-прежнему нельзя уменьшить');
+  ok(!rejects({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 1199, location: 'teras', keyKind: 'office' }), 'меньший пробег принимается (лимитов нет)');
   p = act({ kind: 'park', carId: 'bmw', actorId: 'd2', odo: 1225, location: 'teras', keyKind: 'office' });
   ok(p.trips[1].distance === 25, 'следующая поездка считает расстояние обычным образом');
   p = act({ kind: 'checkout', carId: 'audi', actorId: 'd3', odo: 85000 });
@@ -76,7 +76,7 @@ module.exports = (ok, F) => {
   input.dataset.prev = '127484538383'; input.value = '127484538383'; ui.kmHint();
   ok(hint.className === 'hint warn' && hint.textContent === 'Пробег не изменился. Проверьте одометр', 'подсказка не запрещает неизменённое старое показание вне диапазона');
   input.value = '127484538384'; ui.kmHint();
-  ok(hint.className === 'hint err', 'изменённое показание вне диапазона остаётся ошибкой');
+  ok(hint.className !== 'hint err', 'любое число — не ошибка, только подсказка');
   ui.state = F.emptyState();
   ui.state.events = [{ id: 'legacy-large-take', kind: 'checkout', carId: 'bmw', actorId: 'd1', at: '2026-10-01T12:00:00Z', odo: 127484538383 }];
   ui.P = F.project(ui.state); ui.actionSheet('park', 'bmw');

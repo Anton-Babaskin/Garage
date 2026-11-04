@@ -7,14 +7,16 @@ exports.core = (ok, F) => {
   let s = F.emptyState();
   const act = c => (s = F.transact(s, { carId: 'bmw', actorId: 'd1', ...c }));
   const rejects = c => { try { F.transact(s, { carId: 'bmw', actorId: 'd1', ...c }); return ''; } catch (e) { return e.message; } };
-  for (const odo of [127484538383, 2000001, -1, 1.5, 'NaN']) ok(!!rejects({ kind: 'checkout', odo }), 'новый checkout отклоняет неверное показание ' + odo);
+  for (const odo of [-1, 1.5, 'NaN']) ok(!!rejects({ kind: 'checkout', odo }), 'checkout отклоняет не-число ' + odo);
+  for (const odo of [0, 127484538383, 31902398129301]) ok(!rejects({ kind: 'checkout', odo }), 'checkout принимает любое число ' + odo);
   act({ kind: 'checkout', odo: 127484 });
   ok(F.project(s).cars[0].odo === 127484, 'первое реальное показание не сравнивается с несуществующим пробегом');
-  for (const odo of [127484538383, 2000001, -1, 1.5]) ok(!!rejects({ kind: 'park', odo, location: 'vadi', keyKind: 'security' }), 'новый park отклоняет неверное показание ' + odo);
-  ok(rejects({ kind: 'park', odo: 132484, location: 'vadi', keyKind: 'security' }).includes('было 127484 км'), 'скачок park +5000 отклонён с последним пробегом');
+  for (const odo of [-1, 1.5]) ok(!!rejects({ kind: 'park', odo, location: 'vadi', keyKind: 'security' }), 'park отклоняет не-число ' + odo);
+  for (const odo of [0, 100, 127484538383]) ok(!rejects({ kind: 'park', odo, location: 'vadi', keyKind: 'security' }), 'park принимает любое число ' + odo);
+  ok(!rejects({ kind: 'park', odo: 132484, location: 'vadi', keyKind: 'security' }), 'скачок park +5000 принимается');
   act({ kind: 'park', odo: 127500, location: 'vadi', keyKind: 'security', photo: PHOTO });
   ok(!s.events.at(-1).photo, 'фото места не попадает в новое событие park');
-  ok(!!rejects({ kind: 'checkout', odo: 132500 }), 'скачок checkout +5000 отклонён');
+  ok(!rejects({ kind: 'checkout', odo: 132500 }), 'скачок checkout +5000 принимается');
   act({ kind: 'checkout', odo: 127510 });
   act({ kind: 'park', odo: 127540, location: 'teras', keyKind: 'office' });
   act({ kind: 'checkout', carId: 'audi', actorId: 'd3', odo: 85000 });
@@ -55,14 +57,13 @@ exports.core = (ok, F) => {
   ok(F.project(parkedLegacy).cars[0].status === 'parked' && F.project(parkedLegacy).cars[0].odo === 127484538383, 'старый пробег вне диапазона не мешает парковке, если число не меняли');
   ok(JSON.stringify(legacy.events) === oldJournal && JSON.stringify(parkedLegacy.events.slice(0, -1)) === oldJournal, 'исключение для парковки не исправляет старые данные и только дополняет журнал');
   for (const [state, cmd] of [
-    [legacy, { kind: 'park', odo: 127484538384, actorId: 'd1', location: 'teras', keyKind: 'security' }],
     [legacy, { kind: 'park', odo: 127484538383, actorId: 'd2', location: 'teras', keyKind: 'security' }],
     [legacy, { kind: 'park', odo: 127484538383, actorId: 'd1', location: 'invalid', keyKind: 'security' }],
-    [parkedLegacy, { kind: 'checkout', odo: 127484538383, actorId: 'd1' }]
+    [legacy, { kind: 'park', odo: 5, actorId: 'd1', location: 'invalid', keyKind: '' }]
   ]) {
     let rejected = false;
     try { F.transact(state, { carId: 'bmw', ...cmd }); } catch (e) { rejected = true; }
-    ok(rejected, 'исключение не разрешает новый ошибочный пробег, чужую парковку, неверное место или checkout вне диапазона: ' + cmd.kind + '/' + cmd.actorId);
+    ok(rejected, 'без лимитов пробега по-прежнему нельзя: чужая парковка, неверное место: ' + cmd.kind + '/' + cmd.actorId);
   }
 };
 
@@ -77,9 +78,7 @@ exports.api = async ({ ok, F, call, B, dir, jar, accessCookie }) => {
     ok([401, 404].includes(r.status), 'фото недоступно без сессии, даже с cookie доступа к сайту');
   }
   ok((await call('new-d1', '/api/op', { op: 'transact', args: [{ kind: 'car_reset', carId: 'bmw' }] })).status === 422, 'API не разрешает водителю car_reset');
-  ok((await take(127484538383)).status === 422 && (await take(6040)).status === 422, 'API отклоняет слишком длинный пробег и скачок checkout +5000');
-  await take(1040);
-  ok((await park(6040)).status === 422 && (await park(127484538383)).status === 422, 'API отклоняет скачок park +5000 и слишком длинное показание');
+  ok((await take(127484538383)).status === 200, 'API принимает любой пробег при checkout');
   let r = await park(1050, PHOTO);
   ok(r.status === 200 && F.project(r.j.state).cars[0].hasPhoto && !r.j.state.events.at(-1).photo && !JSON.stringify(r.j.state).includes(PHOTO), 'park сохраняет фото отдельно; ответ состояния содержит только hasPhoto');
   const stored = JSON.parse(fs.readFileSync(photoPath, 'utf8'));
@@ -138,8 +137,6 @@ exports.api = async ({ ok, F, call, B, dir, jar, accessCookie }) => {
   legacy.events = [{ id: 'legacy-large-take', kind: 'checkout', carId: 'bmw', actorId: 'd1', at: '2026-10-01T12:00:00Z', odo: 127484538383 }];
   const restored = await call('a', '/api/op', { op: 'restore', args: [legacy] });
   ok(restored.status === 200, 'API: старый журнал с большим пробегом загружен только в изолированном тесте');
-  r = await op('new-d1', { kind: 'park', odo: '127484538384', location: 'teras', keyKind: 'security' });
-  ok(r.status === 422, 'API: новое большое показание по-прежнему запрещено');
   r = await op('new-d1', { kind: 'park', odo: '127484538383', location: 'teras', keyKind: 'security' });
   ok(r.status === 200 && F.project(r.j.state).cars[0].status === 'parked' && F.project(r.j.state).cars[0].odo === 127484538383 && JSON.stringify(r.j.state.events.slice(0, -1)) === JSON.stringify(legacy.events), 'API: парковка с неизменённым старым пробегом проходит без перезаписи истории');
 };

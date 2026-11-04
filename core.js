@@ -196,7 +196,6 @@ function project(state){
       record.prevOdo=car.odo;car.odo=odo;car.lastOdoAt=event.at;
     }else if(ODO_EVENTS.has(event.kind)){
       const odo=parseOdo(event.odo);
-      if(car.odo!==null&&odo<car.odo)fail(T('Пробег не может быть меньше последней записи: ')+car.odo+T(' км.'));
       if(event.kind==='init'){
         if(!isManager(event.actorId))fail(T('Начальные данные вводит руководитель.'));
         if(car.status!=='unconfigured')fail(T('Начальные данные этой машины уже внесены.'));
@@ -264,12 +263,6 @@ function transact(state,command,now){
   if(command.washType)event.washType=String(command.washType);
   if(command.washDate)event.washDate=String(command.washDate).slice(0,10);
   if(command.issueId)event.issueId=command.issueId;
-  if(command.kind==='checkout'||command.kind==='park'){
-    const car=current.cars.find(c=>c.id===command.carId);
-    const unchangedPark=command.kind==='park'&&car&&event.odo===car.odo;
-    if(event.odo>2000000&&!unchangedPark)fail(T('Укажите пробег от 0 до 2 000 000 км.'));
-    if(car&&car.odo!==null&&Math.abs(event.odo-car.odo)>3000)fail(tpl(T('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег'),{n:car.odo}));
-  }
   if(command.photo&&command.kind!=='park'){validatePhoto(command.photo);event.photo=command.photo;}
   if(command.kind==='park'&&(!command.keyKind||command.keyKind==='unknown'))fail(T('Укажите, где оставили ключи.'));
   const next=upgrade(state);next.events.push(event);project(next);return next;

@@ -127,8 +127,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').odo === 1200, 'API: первая парковка сохранила фактическое показание');
     first = await firstOp({ kind: 'checkout', odo: 1200 });
     ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').trip.startOdo === 1200, 'API: следующая поездка использует последнее показание');
-    ok((await firstOp({ kind: 'park', odo: 1199, location: 'teras', keyKind: 'office' })).status === 422, 'API: уменьшение пробега по-прежнему запрещено');
-    ok((await firstOp({ kind: 'park', odo: 1225, location: 'teras', keyKind: 'office' })).status === 200, 'API: следующая поездка завершается штатно');
+    ok((await firstOp({ kind: 'park', odo: 1199, location: 'teras', keyKind: 'office' })).status === 200, 'API: меньший пробег принимается (лимитов нет)');
     let r = await call('a', '/api/op', { op: 'transact', args: [{ kind: 'init', carId: 'bmw', odo: 1000, location: 'vadi', keyKind: 'security' }] });
     ok(r.status === 200, 'руководство вносит машину');
     r = await call('d', '/api/op', { op: 'transact', args: [{ kind: 'checkout', carId: 'bmw', odo: 1000, actorId: 'd3' }] });

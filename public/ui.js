@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=31;
+const APP_VERSION=32;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -1034,7 +1034,7 @@ function formEnd(label,icon){
 function kmField(prev,prefill,kind){
   const unchangedPark=kind==='park'&&prev!=null&&Number(prefill)===prev;
   const hint=kind==='checkout'?T('Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте'):unchangedPark?T('Пробег не изменился. Проверьте одометр'):prev==null?T('Текущий общий пробег с приборной панели'):kind==='handover_accept'?T('Сверьте с приборкой. Если цифра другая, исправьте'):T('Не меньше ')+fmt(prev)+T(' км');
-  const maxLength=kind==='checkout'||kind==='park'?' maxlength="7"':'';
+  const maxLength='';
   return T('<div class="field"><label class="lbl" for="f-odo">Пробег с одометра')+(prev!=null?T('<span class="opt-note">последний: ')+fmt(prev)+'</span>':'')+'</label>'+
     '<div class="km-wrap"><input id="f-odo" name="odo" class="inp km-input" inputmode="numeric"'+maxLength+' pattern="[0-9]*" autocomplete="off" enterkeyhint="done" value="'+(prefill!=null?prefill:'')+'" placeholder="'+(prev!=null?fmt(prev):'000 000')+'" data-prev="'+(prev!=null?prev:'')+'" data-kind="'+kind+T('" aria-describedby="f-odo-hint"><span class="u">км</span></div>')+
     '<div class="hint'+(unchangedPark?' warn':'')+'" id="f-odo-hint">'+hint+'</div></div>';
@@ -1542,11 +1542,9 @@ function kmHint(){
   if(!/^\d+$/.test(txt)){h.className='hint err';h.textContent=T('Только цифры, без точек и букв');return;}
   const v=+txt;
   const unchangedPark=kind==='park'&&prev!==null&&v===prev;
-  if(protectedOdo&&(v<0||v>2000000)&&!unchangedPark){h.className='hint err';h.textContent=T('Укажите пробег от 0 до 2 000 000 км.');return;}
   if(prev==null){h.className='hint';h.textContent=fmt(v)+T(' км');return;}
   const d=v-prev;
-  if(protectedOdo&&Math.abs(d)>3000){h.className='hint err';h.textContent=tpl('Проверьте пробег: было {n} км. Если всё верно, попросите руководство исправить пробег',{n:fmt(prev)});return;}
-  if(d<0){h.className='hint err';h.textContent=T('Меньше последней записи (')+fmt(prev)+T(' км). Проверьте одометр');return;}
+  if(d<0){h.className='hint warn';h.textContent=T('Меньше последней записи (')+fmt(prev)+T(' км). Проверьте одометр');return;}
   if(kind==='checkout'){if(d===0){h.className='hint';h.textContent=T('Совпадает с одометром — просто подтвердите. Отличается — нажмите и исправьте');}else{h.className='hint warn';h.textContent='+'+fmt(d)+T(' км с последней записи. Руководитель увидит это как пробег без записи');}return;}
   if(kind==='park'&&d===0){h.className='hint warn';h.textContent=T('Пробег не изменился. Проверьте одометр');return;}
   if(kind==='handover_accept'){h.className=d===0?'hint ok':'hint warn';h.textContent=d===0?T('Совпадает с пробегом при передаче'):'+'+fmt(d)+T(' км после запроса на передачу');return;}
