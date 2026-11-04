@@ -117,7 +117,8 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     ok((await firstOp({ kind: 'init', odo: 0, location: 'vadi', keyKind: 'security' })).status === 422, 'права на ручное внесение начальных данных остаются у руководства');
     let first = await firstOp({ kind: 'checkout', odo: 0 });
     ok(first.status === 200 && F.project(first.j.state).cars.find(c => c.id === 'fiat').trip.startOdo === 0, 'API: водитель взял новую машину без участия руководства');
-    ok((await firstOp({ kind: 'checkout', carId: 'audi', odo: 0 })).status === 422, 'API: занятому водителю нельзя взять вторую новую машину');
+    ok((await firstOp({ kind: 'checkout', carId: 'audi', odo: 0 })).status === 200, 'API: водитель берёт вторую машину одновременно');
+    ok((await firstOp({ kind: 'park', carId: 'audi', odo: 5, location: 'vadi', keyKind: 'security' })).status === 200, 'API: вторую машину ставит отдельно, первая остаётся у него');
     for (const args of [
       { kind: 'park', location: 'vadi', keyKind: 'security' },
       { kind: 'park', odo: 1200, keyKind: 'security' },

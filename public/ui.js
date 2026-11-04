@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=32;
+const APP_VERSION=33;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -351,7 +351,6 @@ function carActions(c){
     if(c.currentDriverId!==role)return T('<span class="foot-note">За рулём: <b>')+esc(nameOf(c.currentDriverId))+'</b></span>';
     return '<button class="btn" data-act="handover_request" data-car="'+c.id+'">'+ic('swap')+T('Передать</button><button class="btn btn-primary" data-act="park" data-car="')+c.id+'">'+ic('park')+T('Поставить</button>');
   }
-  if(occupied(role,c.id))return T('<span class="foot-note">Сначала завершите свою поездку или передачу</span>');
   return '<button class="btn btn-primary" data-act="checkout" data-car="'+c.id+'">'+ic('key')+T('Взять машину</button>');
 }
 function carCard(c){
@@ -453,11 +452,11 @@ function viewCars(){
 
 function viewMine(){
   /* Экран водителя: одна задача на экране, крупный текст, минимум значков */
-  const me=role,active=P.cars.find(c=>c.currentDriverId===me),incoming=P.cars.find(c=>c.pendingTransfer&&c.pendingTransfer.toId===me);
+  const me=role,actives=P.cars.filter(c=>c.currentDriverId===me),incomings=P.cars.filter(c=>c.pendingTransfer&&c.pendingTransfer.toId===me);
   let out='';
   const head=(title,sub)=>'<div class="d-head"><div class="d-hello">'+esc(nameOf(me))+'</div><h1 class="d-title">'+title+'</h1>'+(sub?'<p class="d-sub">'+sub+'</p>':'')+'</div>';
-  if(incoming){
-    const p=incoming.pendingTransfer,c=incoming;
+  incomings.forEach(c=>{
+    const p=c.pendingTransfer;
     out+=head(T('Вам передают машину'),esc(p.fromName)+' · '+esc(ago(p.at)))+
       '<div class="d-card">'+'<div class="d-photo">'+carSVG(c.color,{id:c.id,surface:true})+'</div>'+
         '<div class="d-car">'+esc(c.name)+(c.model?' '+esc(c.model):'')+'</div>'+statusPill(c)+(c.plate?'<div class="d-plate">'+plateHTML(c.plate)+'</div>':'')+
@@ -465,12 +464,12 @@ function viewMine(){
         '<button class="btn btn-go btn-xl btn-block" data-act="handover_accept" data-car="'+c.id+'">'+T('Принять машину')+'</button>'+
         '<button class="btn btn-quiet btn-block" data-act="handover_decline" data-car="'+c.id+'">'+T('Отклонить')+'</button>'+
       '</div>';
-  }
-  else if(active){
-    const c=active,seg=c.trip.segment,long=attentionItems(true).some(a=>a.kind==='shift'&&a.carId===c.id);
+  });
+  if(actives.length)out+=head(actives.length>1?T('Машины у вас')+' · '+actives.length:T('Машина у вас'),'');
+  actives.forEach(c=>{
+    const seg=c.trip.segment,long=attentionItems(true).some(a=>a.kind==='shift'&&a.carId===c.id);
     const from=c.trip.fromLocation?F.locationName(c.trip.fromLocation):'';
-    out+=head(T('Машина у вас'),'')+
-      '<div class="d-card'+flashCls(c.id)+'">'+
+    out+='<div class="d-card'+flashCls(c.id)+'">'+
         '<div class="d-photo">'+carSVG(c.color,{id:c.id,surface:true})+'</div>'+
         '<div class="d-car">'+esc(c.name)+(c.model?' '+esc(c.model):'')+'</div>'+statusPill(c)+(c.plate?'<div class="d-plate">'+plateHTML(c.plate)+'</div>':'')+
         '<div class="d-line">'+T('Взяли в')+' '+tFmt.format(ts(seg.startAt))+(from?' · '+esc(from):'')+'</div>'+
@@ -481,11 +480,10 @@ function viewMine(){
           :'<button class="btn btn-go btn-xl btn-block" data-act="park" data-car="'+c.id+'">'+T('Поставить на паркинг')+'</button>'+
            '<div class="d-two"><button class="btn btn-lg" data-act="handover_request" data-car="'+c.id+'">'+T('Передать')+'</button><button class="btn btn-lg" data-act="issue_report" data-car="'+c.id+'">'+T('Проблема')+'</button></div>')+
       '</div>';
-  }
-  else{
-    const busyMe=occupied(me);
-    out+=head(T('Какую машину берёте?'),T('Нажмите на машину'))+'<div class="d-list">'+P.cars.map(c=>{
-      const can=(c.status==='parked'||c.status==='unconfigured')&&!busyMe;
+  });
+  {
+    out+=(actives.length||incomings.length?'<h2 class="d-more">'+T('Взять ещё машину')+'</h2>':head(T('Какую машину берёте?'),T('Нажмите на машину')))+'<div class="d-list">'+P.cars.filter(c=>c.currentDriverId!==me).map(c=>{
+      const can=c.status==='parked'||c.status==='unconfigured';
       let where;
       if(c.status==='driving')where=statusDot(c.pendingTransfer?'pending':'driving')+T('Занята')+': '+esc(nameOf(c.currentDriverId));
       else if(c.status==='parked')where=statusDot('parked')+esc(F.locationName(c.location)+(c.spot?', '+c.spot:''));
@@ -1077,7 +1075,7 @@ function actionSheet(kind,id){
   if(!isMgr(role)&&kind!=='init')ctx=kind==='handover_accept'?'<div>'+T('Передаёт')+': <b>'+esc(c.pendingTransfer.fromName)+'</b></div>':'<div>'+T('Последний пробег')+': <b>'+(firstCheckout?'0 '+T('км'):c.odo==null?'—':fmt(c.odo)+' '+T('км'))+'</b></div>';
   let body=kind==='checkout'?'':'<div class="ctx">'+ctx+'</div>';
   if(kind==='handover_request'){
-    body+=T('<fieldset class="field"><legend class="lbl">Кому передаёте</legend><div class="opts ppl">')+state.drivers.filter(d=>d.id!==role).map(d=>{const b=occupied(d.id,id);return '<label class="opt"><input type="radio" name="toId" value="'+d.id+'"'+(b?' disabled':'')+'><span class="opt-face">'+avatar(d.id)+'<span>'+esc(d.name)+'<span class="sub">'+(b?T('занят: ')+esc(b.name):T('свободен'))+'</span></span></span></label>';}).join('')+T('</div><div class="hint">Получатель подтвердит приём на своём экране.</div></fieldset>');
+    body+=T('<fieldset class="field"><legend class="lbl">Кому передаёте</legend><div class="opts ppl">')+state.drivers.filter(d=>d.id!==role).map(d=>{const b=occupied(d.id,id);return '<label class="opt"><input type="radio" name="toId" value="'+d.id+'"><span class="opt-face">'+avatar(d.id)+'<span>'+esc(d.name)+'<span class="sub">'+(b?T('сейчас у него: ')+esc(b.name):T('свободен'))+'</span></span></span></label>';}).join('')+T('</div><div class="hint">Получатель подтвердит приём на своём экране.</div></fieldset>');
   }
   body+=kmField(c.odo,firstCheckout?0:(kind==='checkout'||kind==='park'||kind==='handover_accept')?c.odo:null,kind);
   if(kind==='park'||kind==='init'){

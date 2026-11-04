@@ -695,6 +695,7 @@ dialog.sheet:has(.park-photo-full){overflow:hidden}
 .drv main{font-size:17px}
 .d-wrap{max-width:560px;margin:0 auto;display:grid;gap:18px}
 .d-head{display:grid;gap:6px}
+.d-more{font:700 20px/1.2 var(--f-display);margin:22px 0 0}
 .d-hello{font-size:17px;color:var(--ink-2);font-weight:600}
 .d-title{font:700 28px/1.15 var(--f-display);margin:0;letter-spacing:-.01em}
 .d-sub{margin:0;font-size:17px;color:var(--ink-2)}

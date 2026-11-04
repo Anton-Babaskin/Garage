@@ -147,7 +147,6 @@ function project(state){
   const freshCar=meta=>{const det=(state.carDetails&&state.carDetails[meta.id])||{};return {...meta,model:String(det.model||''),plate:String(det.plate||''),photo:String(det.photo||''),color:HEX.test(det.color||'')?det.color:meta.color,hasPhoto:!!det.hasPhoto,status:'unconfigured',odo:null,location:null,spot:'',currentDriverId:null,lastPark:null,trip:null,lastTrip:null,updatedAt:null,pendingTransfer:null,keys:{kind:'unknown'},issues:[],lastOdoAt:null,resetIndex:-1};};
   const cars=CARS.map(freshCar);
   const trips=[],audit=[],seen=new Set(),issues=new Map();
-  function busy(id,except){return cars.some(c=>c.id!==except&&(c.currentDriverId===id||(c.pendingTransfer&&c.pendingTransfer.toId===id)));}
   for(const event of state.events){
     if(!event.id||seen.has(event.id))fail(T('В журнале повторяется запись.'));seen.add(event.id);
     if(!Number.isFinite(Date.parse(event.at)))fail(T('Некорректное время события.'));
@@ -208,7 +207,6 @@ function project(state){
         if(!d)fail(T('Сначала выберите водителя.'));
         if(event.kind==='checkout'){
           if(car.status!=='parked'&&car.status!=='unconfigured')fail(T('Машина уже в поездке.'));
-          if(busy(d.id,car.id))fail(T('За вами уже числится другая машина или ожидается передача. Сначала завершите действие.'));
           record.odoGap=car.odo==null?0:odo-car.odo;record.fromLocation=car.location;record.fromSpot=car.spot;
           car.trip={id:event.id,carId:car.id,startAt:event.at,startOdo:odo,fromLocation:car.location,fromSpot:car.spot,segments:[],segment:{driverId:d.id,driverName:event.actorName,startAt:event.at,startOdo:odo}};
           car.status='driving';car.currentDriverId=d.id;car.location=null;car.spot='';car.hasPhoto=false;car.keys=heldKeys(event,d.id,event.actorName);
@@ -216,7 +214,6 @@ function project(state){
           const pending=car.pendingTransfer;
           if(!pending||pending.id!==event.requestId)fail(T('Эта передача уже завершена или отменена.'));
           if(pending.toId!==d.id)fail(T('Принять машину может только выбранный получатель.'));
-          if(busy(d.id,car.id))fail(T('У вас уже есть другая машина или ожидаемая передача.'));
           const segment={...car.trip.segment,endAt:event.at,endOdo:odo,distance:odo-car.trip.segment.startOdo};
           car.trip.segments.push(segment);record.distance=segment.distance;record.fromId=pending.fromId;record.fromName=pending.fromName;record.toName=event.actorName;
           car.trip.segment={driverId:d.id,driverName:event.actorName,startAt:event.at,startOdo:odo};car.currentDriverId=d.id;car.keys=heldKeys(event,d.id,event.actorName);car.pendingTransfer=null;
@@ -226,7 +223,6 @@ function project(state){
           if(car.pendingTransfer)fail(T('Ожидается принятие машины. Сначала завершите или отмените передачу.'));
           if(event.kind==='handover_request'){
             const target=driver(state,event.toId);if(!target||target.id===d.id)fail(T('Выберите другого водителя.'));
-            if(busy(target.id,car.id))fail(T('У этого водителя уже есть машина или ожидаемая передача.'));
             car.pendingTransfer={id:event.id,at:event.at,fromId:d.id,fromName:event.actorName,toId:target.id,toName:event.toName,odo,note:event.note||''};
           }else{
             const segment={...car.trip.segment,endAt:event.at,endOdo:odo,distance:odo-car.trip.segment.startOdo};
@@ -234,7 +230,6 @@ function project(state){
             if(event.kind==='handover'){
               // Совместимость с передачами из первой версии ChatGPT.
               const target=driver(state,event.toId);if(!target||target.id===d.id)fail(T('Выберите другого водителя.'));
-              if(busy(target.id,car.id))fail(T('У этого водителя уже есть машина в поездке.'));
               car.trip.segments.push(segment);car.trip.segment={driverId:target.id,driverName:event.toName,startAt:event.at,startOdo:odo};car.currentDriverId=target.id;car.keys=heldKeys(event,target.id,event.toName);
             }else{
               validateLocation(event);car.trip.segments.push(segment);

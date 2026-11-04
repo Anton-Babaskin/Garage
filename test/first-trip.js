@@ -12,7 +12,7 @@ module.exports = (ok, F) => {
   let p = act({ kind: 'checkout', carId: 'bmw', actorId: 'd1', odo: 0 });
   ok(car(p).status === 'driving' && car(p).odo === 0 && car(p).trip.startOdo === 0 && car(p).keys.driverId === 'd1', 'водитель начинает первую поездку с 0 и получает ключи');
   ok(p.audit[0].odoGap === 0 && p.cars.filter(c => c.status === 'unconfigured').length === 3, 'первый выезд не создаёт ложный пробег без записи и не меняет другие машины');
-  ok(rejects({ kind: 'checkout', carId: 'audi', actorId: 'd1', odo: 0 }), 'нельзя одновременно взять вторую, ещё не настроенную машину');
+  ok(!rejects({ kind: 'checkout', carId: 'audi', actorId: 'd1', odo: 0 }), 'водитель может взять вторую машину одновременно');
   ok(rejects({ kind: 'checkout', carId: 'bmw', actorId: 'd2', odo: 0 }), 'другой водитель не может взять занятую машину');
   ok(rejects({ kind: 'checkout', carId: 'audi', actorId: 'anton', odo: 0 }), 'руководство не становится водителем');
   const take = JSON.stringify(state.events);
@@ -53,7 +53,17 @@ module.exports = (ok, F) => {
   ui.actionSheet('checkout', 'bmw');
   ok(/id="f-odo"[^>]*value="1225"/.test(sheet), 'следующий выезд подставляет реальное последнее показание, не 0');
   ui.role = 'd3';
-  ok(!ui.carActions(ui.carOf('skoda')).includes('data-act="checkout"'), 'карточка не предлагает занять вторую новую машину');
+  ok(ui.carActions(ui.carOf('skoda')).includes('data-act="checkout"'), 'карточка предлагает взять ещё одну машину');
+  {
+    const saved = [ui.state, ui.P, ui.role];
+    let two = F.transact(F.emptyState(), { kind: 'checkout', carId: 'bmw', actorId: 'd1', odo: 0 });
+    two = F.transact(two, { kind: 'checkout', carId: 'fiat', actorId: 'd1', odo: 0 });
+    Object.assign(ui, { state: two, P: F.project(two), role: 'd1', attentionItems: () => [], statusPill: () => '', plateHTML: () => '', flashCls: () => '', ago: () => '' });
+    const scr = ui.viewMine();
+    ok((scr.match(/data-act="park"/g) || []).length === 2 && scr.includes('Машины у вас') && scr.includes('Взять ещё машину') && (scr.match(/data-act="checkout"/g) || []).length === 2,
+      'экран водителя с двумя машинами: две карточки «Поставить» и список «Взять ещё машину»');
+    [ui.state, ui.P, ui.role] = saved;
+  }
   ui.role = 'd1';
   ui.actionSheet('checkout', 'bmw');
   const prefilled = () => sheet.match(/id="f-odo"[^>]*value="([^"]*)"/)[1];
