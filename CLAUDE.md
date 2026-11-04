@@ -37,7 +37,7 @@
 2. `APP_VERSION` в `public/ui.js` +1, строка сверху в `CHANGELOG.md`.
 3. `npm test` → должно быть «✓ Всё в порядке». Красный — не пушить.
 4. Коммит в `main` → push в GitHub. Деплой — см. ниже.
-5. **Правит один.** Пока сайт на Replit — агент Replit не запускается, владелец в Replit жмёт только Git → Pull → Republish.
+5. **Правит один.** Пока сайт на Replit — агент Replit не запускается, владелец в Replit жмёт только Git → ↻ (обновить) → Sync Changes → Republish (просто Pull без ↻ может ничего не подтянуть).
 
 Секреты (значения никогда не в код, логи, git): `SITE_KEY` (12 символов), `ADMIN_PIN`, `DATABASE_URL` (только Replit).
 
@@ -45,7 +45,7 @@
 
 ## Текущее состояние (2026-11-03)
 
-- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v31** (в `main` уже v33 — ждёт Pull → Republish).
+- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (v33 опубликована 2026-11-04).
 - Код на GitHub: `Anton-Babaskin/garage`, ветка `main` опережает прод. Тесты зелёные.
 - Решение владельца: **уходим с Replit на свой сервер** (VPS или виртуалка, Ubuntu 24.04).
 
