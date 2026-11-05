@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=33;
+const APP_VERSION=34;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -114,6 +114,7 @@ const ICON={
   chev:'<path d="M6 9l6 6 6-6"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
   camera:'<path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.5"/>',
+  image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   edit:'<path d="m15 4 5 5L9 20H4v-5z"/>',
   bell:'<path d="M5 17h14l-1.5-3V10a5.5 5.5 0 0 0-11 0v4zM10 20.5h4"/>',
   link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
@@ -1054,9 +1055,14 @@ function noteField(ph,open){
 function photoField(label){
   return '<details class="more"><summary>'+ic('camera')+esc(label)+T('<span class="opt-note">необязательно</span></summary><input type="file" id="f-photo" accept="image/*" capture="environment" class="file-inp"><div class="hint">Фото сохраняется вместе с записью в журнале.</div><div id="f-photo-prev" class="photo-prev"></div></details>');
 }
+/* Android часто открывает только галерею — даём две кнопки: камера и галерея. На iPhone одна кнопка (система сама предлагает «Снять фото»). */
+const IS_ANDROID=typeof navigator!=='undefined'&&/Android/i.test(navigator.userAgent||'');
 function parkPhotoField(){
-  return '<div class="field park-photo-field">'+
-    '<label class="btn park-photo-pick">'+ic('camera')+T('Фото места')+'<input type="file" id="f-photo" accept="image/*" aria-label="'+T('Фото места')+'"></label>'+
+  const pick=IS_ANDROID
+    ?'<div class="park-photo-two"><label class="btn park-photo-pick">'+ic('camera')+T('Сфотографировать')+'<input type="file" id="f-photo-cam" accept="image/*" capture="environment" aria-label="'+T('Сфотографировать')+'"></label>'+
+      '<label class="btn park-photo-pick">'+ic('image')+T('Из галереи')+'<input type="file" id="f-photo" accept="image/*" aria-label="'+T('Из галереи')+'"></label></div>'
+    :'<label class="btn park-photo-pick">'+ic('camera')+T('Фото места')+'<input type="file" id="f-photo" accept="image/*" aria-label="'+T('Фото места')+'"></label>';
+  return '<div class="field park-photo-field">'+pick+
     '<span class="opt-note">'+T('необязательно')+'</span>'+
     '<div id="f-photo-prev" class="photo-prev" aria-live="polite"></div></div>';
 }
@@ -1452,7 +1458,7 @@ document.addEventListener('click',ev=>{
       case 'car-reset':if(isMgr(role))carResetSheet(id);break;
       case 'car-reset-cancel':carSheet(id);break;
       case 'car-reset-confirm':if(isMgr(role))runCommand({kind:'car_reset',carId:id,actorId:role});break;
-      case 'photo-remove':photoSeq++;photoData=null;photoBusy=false;{const inp=$('#f-photo'),prev=$('#f-photo-prev');if(inp)inp.value='';if(prev)prev.innerHTML='';}break;
+      case 'photo-remove':photoSeq++;photoData=null;photoBusy=false;{const prev=$('#f-photo-prev');['#f-photo','#f-photo-cam'].forEach(q=>{const inp=$(q);if(inp)inp.value='';});if(prev)prev.innerHTML='';}break;
       case 'wash':closeSheet();washSheet(id);break;
       case 'odofix':if(isMgr(role))odoFixSheet(id);break;
       case 'place':if(isMgr(role))placeSheet(b.dataset.place);break;
@@ -1579,7 +1585,8 @@ document.addEventListener('change',async e=>{
     if(t.id==='svc-car'){ui.svcCar=t.value;render();return;}
     if(t.name==='type'&&t.closest('#f')){const h=$('#svc-iv');if(h)h.textContent=ivText(t.value);const n=$('#f-svcodo-note');if(n)n.textContent=F.serviceType(t.value).needOdo?T('км'):T('необязательно');return;}
     if(t.name==='carId'&&t.closest('#f')){const c=carOf(t.value),o=$('#f-svcodo');if(o&&c&&c.odo!=null){o.value=c.odo;o.placeholder=fmt(c.odo);}return;}
-    if(t.id==='f-photo'){
+    if(t.id==='f-photo'||t.id==='f-photo-cam'){
+      {const other=$(t.id==='f-photo'?'#f-photo-cam':'#f-photo');if(other&&t.files[0])other.value='';}
       const token=++photoSeq,prev=$('#f-photo-prev');photoData=null;
       if(!t.files[0]){photoBusy=false;prev.textContent='';return;}
       photoBusy=true;prev.textContent=T('Подготовка фото…');

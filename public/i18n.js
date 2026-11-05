@@ -479,6 +479,8 @@ var TRD={
 "Машина сейчас не в поездке.": "Araç şu an seferde değil.",
 "Машина у вас": "Araç sizde",
 "Машины у вас": "Araçlar sizde",
+"Сфотографировать": "Fotoğraf çek",
+"Из галереи": "Galeriden seç",
 "Взять ещё машину": "Bir araç daha al",
 "сейчас у него: ": "şu an onda: ",
 "Машина уже в поездке.": "Araç zaten seferde.",
