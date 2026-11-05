@@ -45,7 +45,7 @@
 
 ## Текущее состояние (2026-11-03)
 
-- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (v33 опубликована 2026-11-04).
+- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (в `main` уже v35 — ждёт ↻ → Sync Changes → Republish).
 - Код на GitHub: `Anton-Babaskin/garage`, ветка `main` опережает прод. Тесты зелёные.
 - Решение владельца: **уходим с Replit на свой сервер** (VPS или виртуалка, Ubuntu 24.04).
 

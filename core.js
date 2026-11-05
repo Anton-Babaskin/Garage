@@ -107,7 +107,7 @@ function serviceCosts(state,days,now){
   const recs=normService(state.service).records.filter(r=>r.date>=from&&r.cost!=null);
   return CARS.map(c=>({carId:c.id,cost:recs.filter(r=>r.carId===c.id).reduce((a,r)=>a+r.cost,0),count:recs.filter(r=>r.carId===c.id).length}));
 }
-const DEFAULT_SETTINGS={shiftEnd:'20:00',transferMinutes:15,tripHours:12};
+const DEFAULT_SETTINGS={shiftEnd:'20:00',transferMinutes:15,tripHours:12,washDays:14};
 const ODO_EVENTS=new Set(['init','checkout','park','handover','handover_request','handover_accept']);
 const HEX=/^#[0-9a-fA-F]{6}$/;
 function fail(message){throw new Error(message);}
@@ -137,6 +137,7 @@ function keyLabel(keys,state){if(!keys||keys.kind==='unknown')return T('Не о�
 function settingsOf(state){
   const s={...DEFAULT_SETTINGS,...state.settings};
   s.tripHours=Number(s.tripHours);if(!Number.isInteger(s.tripHours)||s.tripHours<1||s.tripHours>72)s.tripHours=12;
+  s.washDays=Number(s.washDays);if(!Number.isInteger(s.washDays)||s.washDays<0||s.washDays>90)s.washDays=14;
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(s.shiftEnd)||!Number.isInteger(s.transferMinutes)||s.transferMinutes<1||s.transferMinutes>240)fail(T('Проверьте время конца смены и интервал напоминания.'));
   return s;
 }
@@ -157,14 +158,22 @@ function project(state){
     if(event.kind==='car_reset'){
       if(!isManager(event.actorId))fail(T('Сброс машины доступен только руководству.'));
       Object.assign(car,freshCar(CARS.find(c=>c.id===car.id)),{hasPhoto:false,resetIndex:audit.length});
-      delete car.lastWash;
+      delete car.lastWash;delete car.washRequest;
+    }else if(event.kind==='wash_request'){
+      if(car.washRequest)fail(T('Заявка на мойку этой машины уже есть.'));
+      car.washRequest={id:event.id,at:event.at,byId:event.actorId,byName:event.actorName,note:event.note||''};
+    }else if(event.kind==='wash_request_cancel'){
+      if(!car.washRequest)fail(T('Заявки на мойку нет.'));
+      if(!isManager(event.actorId)&&car.washRequest.byId!==event.actorId)fail(T('Отменить заявку может тот, кто её создал, или руководство.'));
+      record.requestNote=car.washRequest.note;delete car.washRequest;
     }else if(event.kind==='wash'){
       if(car.status==='unconfigured')fail(T('Сначала внесите начальные данные машины.'));
       if(!WASH_TYPES.some(t=>t.id===event.washType))fail(T('Выберите, что сделали.'));
       if(!/^\d{4}-\d{2}-\d{2}$/.test(String(event.washDate||''))||!Number.isFinite(Date.parse(event.washDate+'T00:00:00Z')))fail(T('Укажите дату.'));
       if(event.washDate>todayStr(Date.parse(event.at)+864e5))fail(T('Дата не может быть в будущем.'));
       if(event.washType==='other'&&!String(event.note||'').trim())fail(T('Опишите, что сделали.'));
-      car.lastWash={at:event.at,date:event.washDate,type:event.washType,by:event.actorName};
+      if(!car.lastWash||event.washDate>=car.lastWash.date)car.lastWash={at:event.at,date:event.washDate,type:event.washType,by:event.actorName};
+      if(car.washRequest){record.closedRequest=car.washRequest.id;delete car.washRequest;}
     }else if(event.kind==='issue_report'){
       if(car.status==='unconfigured')fail(T('Сначала внесите начальные данные машины.'));
       if(!ISSUE_TYPES.some(t=>t.id===event.issueType))fail(T('Выберите тип замечания.'));
@@ -267,7 +276,7 @@ function renameDriver(state,id,name){
   if(next.drivers.some(x=>x.id!==id&&x.name.toLocaleLowerCase('ru')===name.toLocaleLowerCase('ru')))fail(T('Такое имя уже есть. Добавьте фамилию или инициал.'));
   d.name=name;return next;
 }
-function setSettings(state,value){const next=upgrade(state);next.settings={shiftEnd:value.shiftEnd||'20:00',transferMinutes:Number(value.transferMinutes),tripHours:Number(value.tripHours||12)};if(!Number.isInteger(next.settings.tripHours)||next.settings.tripHours<1||next.settings.tripHours>72)fail(T('Укажите от 1 до 72 часов.'));settingsOf(next);return next;}
+function setSettings(state,value){const next=upgrade(state),old=settingsOf(state);next.settings={shiftEnd:value.shiftEnd||'20:00',transferMinutes:Number(value.transferMinutes),tripHours:Number(value.tripHours||12),washDays:value.washDays==null||value.washDays===''?old.washDays:Number(value.washDays)};if(!Number.isInteger(next.settings.tripHours)||next.settings.tripHours<1||next.settings.tripHours>72)fail(T('Укажите от 1 до 72 часов.'));if(!Number.isInteger(next.settings.washDays)||next.settings.washDays<0||next.settings.washDays>90)fail(T('Укажите от 0 до 90 дней (0 — без напоминания).'));settingsOf(next);return next;}
 function setCarDetails(state,id,value){
   if(!CARS.some(c=>c.id===id))fail(T('Машина не найдена.'));
   const next=upgrade(state),color=String(value.color||'');
@@ -285,6 +294,8 @@ function attention(state,now){
     if(car.pendingTransfer){const pending=car.pendingTransfer,minutes=Math.max(0,Math.floor((date-Date.parse(pending.at))/60000)),overdue=minutes>=settings.transferMinutes;result.push({kind:'transfer',sev:overdue?'warn':'info',icon:'swap',carId:car.id,title:T('Передача ')+car.name+T(' ждёт принятия'),text:pending.fromName+' → '+pending.toName+' · '+minutes+T(' мин'),overdue,actorIds:[pending.fromId,pending.toId],at:pending.at});}
     if(car.status==='driving'){const hrs=Math.floor((date-Date.parse(car.trip.startAt))/36e5);if(hrs>=settings.tripHours)result.push({kind:'shift',sev:'warn',icon:'clock',carId:car.id,title:car.name+T(': поездка не закрыта'),text:T('В пути ')+hrs+T(' ч')+' · '+((driver(state,car.currentDriverId)||{}).name||''),overdue:true,actorIds:[car.currentDriverId],at:car.trip.startAt});}
     for(const issue of car.issues.filter(i=>i.status==='open')){const t=issueType(issue.type);result.push({kind:'issue',sev:t.sev,icon:t.icon,carId:car.id,issueId:issue.id,title:car.name+': '+t.name.toLowerCase(),text:issue.text+' · '+issue.authorName,overdue:false,actorIds:[car.currentDriverId,car.lastPark&&car.lastPark.driverId,car.pendingTransfer&&car.pendingTransfer.toId].filter(Boolean),at:issue.at});}
+    if(car.washRequest)result.push({kind:'wash_request',sev:'info',icon:'drop',carId:car.id,title:car.name+T(': нужна мойка'),text:car.washRequest.byName+(car.washRequest.note?' · «'+car.washRequest.note+'»':''),overdue:false,actorIds:[],at:car.washRequest.at});
+    else if(car.status!=='unconfigured'&&settings.washDays>0){const wd=washAge(car,date);if(wd!=null&&wd>=settings.washDays)result.push({kind:'wash_old',sev:'info',icon:'drop',carId:car.id,title:car.name+T(': давно не мыли'),text:T('Последняя мойка')+' '+wd+' '+T('дн. назад'),overdue:false,actorIds:[],at:''});}
     if(car.status==='unconfigured')result.push({kind:'setup',sev:'info',icon:'pin',carId:car.id,title:car.name+T(': нужны начальные данные'),text:T('Укажите расположение и пробег.'),overdue:false,actorIds:[],at:''});
     if(car.status==='parked'&&car.keys&&car.keys.kind==='driver')result.push({kind:'keys',sev:'info',icon:'key',carId:car.id,title:T('Ключи от ')+car.name+T(' у водителя'),text:(driver(state,car.keys.driverId)||{}).name+T(' · машина: ')+locationName(car.location)+(car.spot?', '+car.spot:''),overdue:false,actorIds:[car.keys.driverId],at:car.keys.at||''});
   }
@@ -296,6 +307,8 @@ function attention(state,now){
   result.sort((a,b)=>(SEV_ORDER[a.sev]-SEV_ORDER[b.sev])||(String(b.at)>String(a.at)?1:String(b.at)<String(a.at)?-1:0));
   return result;
 }
+/* Сколько полных дней прошло с последней мойки (по дате мойки); null — мойки не было */
+function washAge(car,now){if(!car.lastWash||!car.lastWash.date)return null;const t=Date.parse(car.lastWash.date+'T00:00:00Z'),d=localParts(now==null?Date.now():Number(new Date(now))),today=Date.parse(d.year+'-'+d.month+'-'+d.day+'T00:00:00Z');return Math.max(0,Math.round((today-t)/864e5));}
 function afterReset(p,record){const car=p.cars.find(c=>c.id===record.carId);return record.auditIndex>car.resetIndex;}
 function stats(state,days,now){
   const p=project(state),end=now==null?Date.now():Number(new Date(now)),start=end-days*864e5;
@@ -410,5 +423,5 @@ function demoState(now){
   sv('skoda','kasko',30,null,61000,'Axa Sigorta','','manager');
   return s;
 }
-root.FleetCore={WASH_TYPES,washName,DEMO_PLACES,MANAGERS,isManager,managerName,GEO_BOX,parseGeo,setPlace,normPlaces,inGeoBox,DEMO_DETAILS,TEAM,driverStats,SERVICE_TYPES,serviceType,serviceStatus,addServiceRecord,deleteServiceRecord,setIntervals,intervalOf,serviceCosts,todayStr,normService,CARS,LOCATIONS,PARKINGS,ISSUE_TYPES,emptyState,upgrade,demoState,project,transact,renameDriver,parseOdo,driver,location,locationName,issueName,issueType,keyLabel,setSettings,setCarDetails,settingsOf,attention,stats,localParts,validatePhoto};
+root.FleetCore={WASH_TYPES,washName,washAge,DEMO_PLACES,MANAGERS,isManager,managerName,GEO_BOX,parseGeo,setPlace,normPlaces,inGeoBox,DEMO_DETAILS,TEAM,driverStats,SERVICE_TYPES,serviceType,serviceStatus,addServiceRecord,deleteServiceRecord,setIntervals,intervalOf,serviceCosts,todayStr,normService,CARS,LOCATIONS,PARKINGS,ISSUE_TYPES,emptyState,upgrade,demoState,project,transact,renameDriver,parseOdo,driver,location,locationName,issueName,issueType,keyLabel,setSettings,setCarDetails,settingsOf,attention,stats,localParts,validatePhoto};
 })(typeof window!=='undefined'?window:globalThis);

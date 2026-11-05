@@ -65,6 +65,26 @@ exports.core = (ok, F) => {
     try { F.transact(state, { carId: 'bmw', ...cmd }); } catch (e) { rejected = true; }
     ok(rejected, 'без лимитов пробега по-прежнему нельзя: чужая парковка, неверное место: ' + cmd.kind + '/' + cmd.actorId);
   }
+  {
+    console.log('Заявки на мойку и напоминание');
+    let w = F.emptyState();
+    const go = c => (w = F.transact(w, { carId: 'fiat', ...c }, c.at));
+    const no = c => { try { F.transact(w, { carId: 'fiat', ...c }); return ''; } catch (e) { return e.message; } };
+    go({ kind: 'wash_request', actorId: 'd2', note: 'салон' });
+    ok(F.project(w).cars.find(c => c.id === 'fiat').washRequest.byId === 'd2', 'водитель создаёт заявку на мойку даже для новой машины');
+    ok(!!no({ kind: 'wash_request', actorId: 'd3' }), 'вторая заявка на ту же машину не создаётся');
+    ok(!!no({ kind: 'wash_request_cancel', actorId: 'd3' }), 'чужой водитель не отменяет заявку');
+    ok(!no({ kind: 'wash_request_cancel', actorId: 'manager' }), 'руководство может отменить заявку');
+    go({ kind: 'checkout', actorId: 'd2', odo: 100 }); go({ kind: 'park', actorId: 'd2', odo: 120, location: 'vadi', keyKind: 'office' });
+    go({ kind: 'wash', actorId: 'd2', washType: 'full', washDate: '2026-10-01', at: '2026-10-01T10:00:00Z' });
+    const car = F.project(w).cars.find(c => c.id === 'fiat');
+    ok(!car.washRequest && car.lastWash.date === '2026-10-01', 'мойка закрывает заявку и запоминается как последняя');
+    ok(F.washAge(car, '2026-10-20T12:00:00Z') === 19, 'возраст мойки считается в днях');
+    const old = F.attention(w, '2026-10-20T12:00:00Z').filter(a => a.kind === 'wash_old' && a.carId === 'fiat');
+    ok(old.length === 1, 'через 14+ дней появляется напоминание «давно не мыли»');
+    w = F.setSettings(w, { shiftEnd: '20:00', transferMinutes: 15, tripHours: 12, washDays: 0 });
+    ok(!F.attention(w, '2026-10-20T12:00:00Z').some(a => a.kind === 'wash_old'), 'washDays=0 отключает напоминание');
+  }
 };
 
 exports.api = async ({ ok, F, call, B, dir, jar, accessCookie }) => {

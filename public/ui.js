@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=34;
+const APP_VERSION=35;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -325,6 +325,8 @@ function entryHTML(e,withDate){
     case 'issue_resolve':icon='check';cls='resolve';title=tpl('{by} закрыл замечание · {car}',V);sub.push(esc(F.issueName(e.issueType)));break;
     case 'odo_fix':icon='edit';cls='keys';title=tpl('{by} исправил пробег · {car}',V);sub.push(T('было')+' '+fmt(e.prevOdo)+' '+T('км')+' → '+T('стало')+' <b class="ent-odo">'+fmt(e.odo)+' '+T('км')+'</b>');break;
     case 'wash':icon='drop';cls='keys';title=tpl('{by}: {what} · {car}',Object.assign({},V,{what:esc(F.washName(e.washType)).toLowerCase()}));if(e.washDate&&e.washDate!==dayKey(e.at))sub.push(esc(fmtDate(e.washDate)));break;
+    case 'wash_request':icon='drop';cls='keys';title=tpl('{by}: нужна мойка · {car}',V);if(e.note)sub.push('«'+esc(e.note)+'»');break;
+    case 'wash_request_cancel':icon='x';cls='resolve';title=tpl('{by} отменил заявку на мойку · {car}',V);break;
     case 'keys':icon='key';cls='keys';title=tpl('{by} отметил ключи · {car}',V);sub.push(esc(keysWord(e)));break;
   }
   if(e.odo!=null&&e.kind!=='odo_fix')sub.push('<b class="ent-odo">'+fmt(e.odo)+T(' км')+'</b>');
@@ -430,7 +432,7 @@ function bossRow(c){
       '<span class="b-chev">'+ic('chev')+'</span></span>'+
     '<span class="b-main">'+
       (c.status==='driving'?kv(T('Водитель'),'<b>'+esc(nameOf(c.currentDriverId))+'</b>'):'')+
-      kv(T('Где'),bossWhere(c))+kv(T('Ключи'),bossKeys(c))+kv(T('Пробег'),c.odo!=null?'<b>'+fmt(c.odo)+'</b> '+T('км'):'—')+
+      kv(T('Где'),bossWhere(c))+kv(T('Ключи'),bossKeys(c))+kv(T('Пробег'),c.odo!=null?'<b>'+fmt(c.odo)+'</b> '+T('км'):'—')+(c.status!=='unconfigured'||c.washRequest?kv(T('Мойка'),washKV(c)):'')+
       flag+(bossFoot(c)?'<span class="b-foot">'+bossFoot(c)+'</span>':'')+
     '</span></button>';
 }
@@ -494,7 +496,7 @@ function viewMine(){
         (can?'<span class="d-row-go">'+T('Взять')+'</span>':'')+'</button>';
     }).join('')+'</div>';
   }
-  out+='<button class="btn btn-lg btn-block d-wash" data-act="wash">'+ic('drop')+T('Записать мойку')+'</button>';
+  out+='<div class="d-two d-wash"><button class="btn btn-lg" data-act="wash_request">'+ic('drop')+T('Нужна мойка')+'</button><button class="btn btn-lg" data-act="wash">'+ic('check')+T('Помыта')+'</button></div>';
   out+='<button class="d-link" data-act="mylog">'+T('Мои записи')+'</button>';
   return '<div class="d-wrap">'+out+'</div>';
 }
@@ -783,7 +785,7 @@ function dashCard(c,i){
   return '<button class="dc'+flashCls(c.id)+'" id="car-'+c.id+'" data-act="car" data-car="'+c.id+'" style="--i:'+i+'">'+
     '<span class="dc-hero">'+chip+'<span class="dc-photo">'+carSVG(c.color,{id:c.id,side:true,surface:true})+'</span></span>'+
     '<span class="dc-body"><span class="dc-id"><span class="dc-name">'+esc(c.name)+(c.model?' <span>'+esc(c.model)+'</span>':'')+'</span>'+(c.plate?'<span class="b-plate">'+plateHTML(c.plate)+'</span>':'')+'</span>'+
-      '<span class="b-main">'+(drv?kv(T('Водитель'),'<b>'+esc(nameOf(c.currentDriverId))+'</b>'):'')+kv(T('Где'),bossWhere(c))+kv(T('Ключи'),bossKeys(c))+kv(T('Пробег'),c.odo!=null?'<b>'+fmt(c.odo)+'</b> '+T('км'):'—')+'</span>'+flag+
+      '<span class="b-main">'+(drv?kv(T('Водитель'),'<b>'+esc(nameOf(c.currentDriverId))+'</b>'):'')+kv(T('Где'),bossWhere(c))+kv(T('Ключи'),bossKeys(c))+kv(T('Пробег'),c.odo!=null?'<b>'+fmt(c.odo)+'</b> '+T('км'):'—')+(c.status!=='unconfigured'||c.washRequest?kv(T('Мойка'),washKV(c)):'')+'</span>'+flag+
       '<span class="dc-foot"><span class="spark" aria-hidden="true">'+daily.map((d,j)=>'<i class="'+(j===daily.length-1?'today':'')+(d.km?'':' zero')+'" style="height:'+Math.max(6,Math.round(d.km/mx*100))+'%"></i>').join('')+'</span><span class="dc-week"><b>'+fmt(tot)+'</b> '+T('км за 7 дней')+'</span></span>'+
     '</span></button>';
 }
@@ -939,19 +941,40 @@ function odoFixSheet(id){
 /* ───────── v22: мойки ───────── */
 function washDay(e){return e.washDate||dayKey(e.at);}
 function washAgo(e){const n=Math.round((Date.parse(dayKey(NOW)+'T00:00:00Z')-Date.parse(washDay(e)+'T00:00:00Z'))/DAY);return n<=0?T('сегодня'):n===1?T('вчера'):plural(n,T('день'),T('дня'),T('дней'))+' '+T('назад');}
+/* v35: заявки на мойку и напоминание «давно не мыли» */
+function washDaysAgo(c){return F.washAge(c,NOW);}
+function washOverdue(c){const n=F.settingsOf(state).washDays,d=washDaysAgo(c);return n>0&&c.status!=='unconfigured'&&(d==null?false:d>=n);}
+function washAgoText(c){const d=washDaysAgo(c);return d==null?T('ещё не мыли'):d===0?T('сегодня'):d===1?T('вчера'):d+' '+T('дн. назад');}
+function washKV(c){
+  if(c.washRequest)return '<span class="wash-flag">'+statusDot('driving')+T('Нужна мойка')+'</span>';
+  return '<span class="'+(washOverdue(c)?'wash-old':'')+'">'+esc(washAgoText(c))+'</span>';
+}
+function washReqSheet(carId){
+  const cars=P.cars.filter(c=>!c.washRequest),mine=P.cars.find(c=>c.currentDriverId===role&&!c.washRequest);
+  if(!cars.length){toast(T('На все машины уже есть заявки'),true);return;}
+  carId=carId||(mine&&mine.id)||(cars.length===1?cars[0].id:'');
+  openSheet(head(T('Нужна мойка'),T('Руководство увидит заявку'))+'<form id="f" data-form="wash_req" novalidate class="stack" style="gap:18px">'+
+    '<fieldset class="field"><legend class="lbl">'+T('Машина')+'</legend><div class="w-pick">'+cars.map(c=>'<label class="w-opt"><input type="radio" name="carId" value="'+c.id+'"'+(c.id===carId?' checked':'')+'><span>'+carSVG(c.color,{id:c.id,side:true,surface:true})+'<b>'+esc(c.name)+'</b></span></label>').join('')+'</div></fieldset>'+
+    '<div class="field"><label class="lbl" for="f-note">'+T('Комментарий')+' <span class="opt-note">'+T('необязательно')+'</span></label><input class="inp" id="f-note" name="note" maxlength="200" enterkeyhint="done" autocapitalize="sentences" placeholder="'+T('Например: салон, после дождя')+'"></div>'+
+    '<div class="form-err" id="f-err" role="alert" hidden></div><div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">'+T('Отмена')+'</button><button class="btn btn-go btn-lg" type="submit" id="f-submit">'+ic('drop')+T('Отправить')+'</button></div></form>');
+}
 function viewWash(){
   const list=P.audit.filter(e=>e.kind==='wash').slice().sort((x,y)=>washDay(y).localeCompare(washDay(x))||ts(y.at)-ts(x.at)),month=dayKey(NOW).slice(0,7);
   const cars=P.cars.map(c=>{
     const w=list.find(e=>e.carId===c.id),n=list.filter(e=>e.carId===c.id&&washDay(e).slice(0,7)===month).length,off=c.status==='unconfigured';
     return '<button class="w-car"'+(off?' disabled':' data-act="wash" data-car="'+c.id+'"')+'><span class="w-photo">'+carSVG(c.color,{id:c.id,side:true,surface:true})+'</span>'+
       '<span class="w-main"><span class="w-name">'+esc(c.name)+(c.model?' <span>'+esc(c.model)+'</span>':'')+'</span>'+
-      '<span class="w-last">'+(w?'<b>'+esc(F.washName(w.washType))+'</b> · '+esc(washAgo(w)):T('Ещё не мыли'))+'</span>'+
+      '<span class="w-last'+(washOverdue(c)?' wash-old':'')+'">'+(w?'<b>'+esc(F.washName(w.washType))+'</b> · '+esc(washAgo(w)):T('Ещё не мыли'))+'</span>'+(c.washRequest?'<span class="wash-flag">'+statusDot('driving')+T('Нужна мойка')+'</span>':'')+
       '<span class="w-month">'+T('В этом месяце')+': <b>'+n+'</b></span></span>'+(off?'':'<span class="w-add">'+ic('plus')+'</span>')+'</button>';
   }).join('');
   const rows=list.slice(0,60).map(e=>'<div class="w-row"><span class="w-date">'+esc(fmtDate(washDay(e)))+'</span><span class="w-what"><b>'+esc((carOf(e.carId)||{}).name||'')+'</b> · '+esc(F.washName(e.washType))+
     '<small>'+esc(e.actorName)+(e.note?' · «'+esc(e.note)+'»':'')+'</small></span></div>').join('');
+  const waiting=P.cars.filter(c=>c.washRequest).sort((a,b)=>ts(a.washRequest.at)-ts(b.washRequest.at));
+  const wait=waiting.length?'<section class="w-wait"><div class="b-h2">'+T('Ждут мойки')+' · '+waiting.length+'</div>'+waiting.map(c=>{const r=c.washRequest,canCancel=isMgr(role)||r.byId===role;
+    return '<div class="w-wait-row"><span class="w-wait-main"><b>'+esc(c.name)+'</b><small>'+esc(r.byName)+' · '+esc(ago(r.at))+(r.note?' · «'+esc(r.note)+'»':'')+'</small></span>'+
+      '<span class="w-wait-acts"><button class="btn btn-go btn-sm" data-act="wash" data-car="'+c.id+'">'+ic('check')+T('Помыта')+'</button>'+(canCancel?'<button class="linkbtn sm" data-act="wash_request_cancel" data-car="'+c.id+'">'+T('Отменить')+'</button>':'')+'</span></div>';}).join('')+'</section>':'';
   return '<div class="b-wrap"><div class="b-head"><h1 class="b-title">'+T('Мойки')+'</h1></div>'+
-    '<button class="btn btn-go btn-xl btn-block" data-act="wash">'+ic('drop')+T('Записать мойку')+'</button>'+
+    '<div class="w-two"><button class="btn btn-lg" data-act="wash_request">'+ic('drop')+T('Нужна мойка')+'</button><button class="btn btn-go btn-lg" data-act="wash">'+ic('check')+T('Помыта')+'</button></div>'+wait+
     '<div class="w-cars">'+cars+'</div>'+
     '<section class="w-hist"><div class="b-h2">'+T('История')+'</div>'+(rows||'<p class="muted" style="margin:6px 0 0">'+T('Пока нет записей')+'</p>')+'</section></div>';
 }
@@ -1159,13 +1182,18 @@ function carSheet(id){
   }else rows+=T('<dt>Где</dt><dd class="muted">Нет начальных данных</dd>');
   const st=F.stats(state,7,NOW).cars.find(x=>x.car.id===id);
   {const sv=F.serviceStatus(state,NOW).find(x=>x.car.id===id).items.filter(i=>i.status!=='unknown').sort((a,b)=>b.used-a.used)[0];if(sv)rows+=T('<dt>Ближайшее ТО</dt><dd><button class="linkbtn sm" data-act="svc-hist" data-car="')+id+'" style="padding:0;white-space:normal;text-align:left"><span class="svc-dot '+({overdue:'crit',soon:'warn',ok:'ok'}[sv.status])+'" style="display:inline-block"></span>'+esc(sv.type.name)+': '+esc(dueText(sv))+'</button></dd>';}
+  if(c.status!=='unconfigured'||c.washRequest){
+    const lw=c.lastWash;rows+='<dt>'+T('Мойка')+'</dt><dd><span class="'+(washOverdue(c)?'wash-old':'')+'">'+(lw?esc(fmtDate(lw.date))+' · '+esc(F.washName(lw.type))+' · '+esc(lw.by)+' ('+esc(washAgoText(c))+')':T('Ещё не мыли'))+'</span>'+
+      (c.washRequest?'<div class="wash-flag">'+statusDot('driving')+T('Нужна мойка')+' · '+esc(c.washRequest.byName)+', '+esc(ago(c.washRequest.at))+(c.washRequest.note?' · «'+esc(c.washRequest.note)+'»':'')+((isMgr(role)||c.washRequest.byId===role)?' <button class="linkbtn sm" data-act="wash_request_cancel" data-car="'+id+'">'+T('Отменить')+'</button>':'')+'</div>':'')+'</dd>';
+  }
   rows+=T('<dt>За 7 дней</dt><dd>')+fmt(st.total)+T(' км')+(st.unlogged?' <span class="ent-flag">('+fmt(st.unlogged)+T(' без записи)</span>'):'')+'</dd>';
   const issues=openIssues(c).map(i=>{const t=F.issueType(i.type);return '<div class="alert '+t.sev+' static"><span class="alert-ic">'+ic(t.icon)+'</span><span><span class="alert-t">'+esc(t.name)+'</span><span class="alert-s">'+esc(i.text)+' · '+esc(i.authorName)+', '+esc(ago(i.at))+'</span></span><button class="btn btn-sm" data-act="issue-resolve" data-car="'+id+'" data-issue="'+esc(i.id)+'">'+ic('check')+T('Решено</button></div>');}).join('');
   const acts=carActions(c).replace(/class="btn /g,'class="btn btn-lg ').replace(/class="btn"/g,'class="btn btn-lg"');
   const tools=[];
   if(c.status!=='unconfigured'){tools.push('<button class="btn btn-sm" data-act="issue_report" data-car="'+id+'">'+ic('plus')+T('Замечание</button>'));if(canKeys(c))tools.push('<button class="btn btn-sm" data-act="keys" data-car="'+id+'">'+ic('key')+T('Ключи</button>'));}
   if(isMgr(role)&&c.status==='parked'&&placeOf(c.location))tools.push('<button class="btn btn-sm" data-act="show-place" data-place="'+c.location+'">'+ic('map')+T('На карте')+'</button>');
-  if(c.status!=='unconfigured')tools.push('<button class="btn btn-sm" data-act="wash" data-car="'+id+'">'+ic('drop')+T('Мойка')+'</button>');
+  if(!c.washRequest)tools.push('<button class="btn btn-sm" data-act="wash_request" data-car="'+id+'">'+ic('drop')+T('Нужна мойка')+'</button>');
+  if(c.status!=='unconfigured')tools.push('<button class="btn btn-sm" data-act="wash" data-car="'+id+'">'+ic('check')+T('Помыта')+'</button>');
   if(isMgr(role)&&c.status==='parked'&&!c.pendingTransfer)tools.push('<button class="btn btn-sm" data-act="odofix" data-car="'+id+'">'+ic('edit')+T('Исправить пробег')+'</button>');
   if(isMgr(role))tools.push('<button class="btn btn-sm" data-act="details" data-car="'+id+'">'+ic('edit')+T('Модель и номер</button>'));
   const hist=P.audit.filter(e=>e.carId===id).slice(-6).reverse();
@@ -1230,6 +1258,7 @@ function settingsSheet(){
   openSheet(head(T('Напоминания'),T('Время Стамбула'))+'<form id="f" data-form="settings" novalidate class="stack" style="gap:18px">'+
     '<input type="hidden" name="shiftEnd" value="'+esc(s.shiftEnd)+'">'+'<div class="field"><label class="lbl" for="f-th">'+T('Напоминать о незакрытой поездке через, ч')+'</label><input class="inp" id="f-th" name="tripHours" type="number" min="1" max="72" inputmode="numeric" value="'+s.tripHours+'"><div class="hint">'+T('Боссу видно в «Нужно проверить», водителю — на его экране.')+'</div></div>'+
     T('<div class="field"><label class="lbl" for="f-tm">Выделять передачу, которую не приняли, через, мин</label><input class="inp" id="f-tm" name="transferMinutes" type="number" min="1" max="240" inputmode="numeric" value="')+s.transferMinutes+'"></div>'+
+    '<div class="field"><label class="lbl" for="f-wd">'+T('Напоминать «давно не мыли» через, дней')+'</label><input class="inp" id="f-wd" name="washDays" type="number" min="0" max="90" inputmode="numeric" value="'+s.washDays+'"><div class="hint">'+T('0 — не напоминать. Машина подсвечивается оранжевым у руководства.')+'</div></div>'+
     T('<div class="form-err" id="f-err" role="alert" hidden></div><div class="sheet-actions"><button class="btn btn-ghost" type="button" data-act="close">Отмена</button><button class="btn btn-primary btn-lg" type="submit">Сохранить</button></div></form>'));
 }
 const SWATCHES=['#6B737C','#556270','#34373C','#15161A','#1F2B47','#2C5BB8','#5B6470','#A9B0B8','#F2F1EC','#B3262D','#2F7A55','#C9A227','#7A4A2E'];
@@ -1303,7 +1332,7 @@ function textSheet(title,text){
 let EXP=null;
 function exportRows(){
   const rows=[[T('Дата'),T('Время'),T('Машина'),T('Действие'),T('Кто'),T('Кому'),T('От кого'),T('Паркинг'),T('Место'),T('Одометр, км'),T('Проехал, км'),T('Без записи, км'),T('Ключи'),T('Замечание'),T('Комментарий')]];
-  const names={init:T('Учёт начат'),checkout:T('Взял машину'),handover_request:T('Предложил передачу'),handover_accept:T('Принял машину'),handover:T('Передал машину'),handover_cancel:T('Отменил передачу'),handover_decline:T('Отклонил передачу'),park:T('Поставил'),car_reset:T('Сбросил машину'),issue_report:T('Замечание'),issue_resolve:T('Закрыл замечание'),keys:T('Отметил ключи'),odo_fix:T('Исправил пробег')};
+  const names={wash_request:T('Нужна мойка'),wash_request_cancel:T('Заявка на мойку отменена'),init:T('Учёт начат'),checkout:T('Взял машину'),handover_request:T('Предложил передачу'),handover_accept:T('Принял машину'),handover:T('Передал машину'),handover_cancel:T('Отменил передачу'),handover_decline:T('Отклонил передачу'),park:T('Поставил'),car_reset:T('Сбросил машину'),issue_report:T('Замечание'),issue_resolve:T('Закрыл замечание'),keys:T('Отметил ключи'),odo_fix:T('Исправил пробег')};
   const dF=new Intl.DateTimeFormat(LOC,{timeZone:TZ,day:'2-digit',month:'2-digit',year:'numeric'});
   P.audit.filter(matchesEvent).slice().reverse().forEach(e=>{const t=ts(e.at),k=e.keyKind?keysWord({keyKind:e.keyKind,keyDriverName:e.keyDriverName,keyNote:e.keyNote}):'';
     rows.push([dF.format(t),tFmt.format(t),(carOf(e.carId)||{}).name||'',(e.kind==='wash'?F.washName(e.washType):(names[e.kind]||e.kind)),dn(e.actorName||''),dn(e.toName||''),dn(e.fromName||''),e.location?F.locationName(e.location):'',e.spot||'',e.odo==null?'':e.odo,e.distance==null?'':e.distance,e.odoGap>0?e.odoGap:'',dn(k),e.issueType?F.issueName(e.issueType):'',e.note||'']);});
@@ -1424,7 +1453,7 @@ function showActionConfirm(outcome){
 function completeAction(outcome){
   closeSheet();render();showActionConfirm(outcome);
 }
-const DONE={wash:T('Мойка записана'),odo_fix:T('Пробег исправлен'),park:T('Парковка и ключи записаны'),car_reset:T('Машина сброшена'),handover_request:T('Запрос отправлен на экран получателя'),handover_accept:T('Получение подтверждено. Машина и ключи за вами'),checkout:T('Выезд записан. Машина за вами'),issue_report:T('Замечание добавлено на карточку'),issue_resolve:T('Замечание закрыто, история сохранена'),keys:T('Место ключей сохранено'),init:T('Начальные данные сохранены'),handover_cancel:T('Передача отменена'),handover_decline:T('Передача отклонена')};
+const DONE={wash_request:T('Заявка на мойку отправлена'),wash_request_cancel:T('Заявка отменена'),wash:T('Мойка записана'),odo_fix:T('Пробег исправлен'),park:T('Парковка и ключи записаны'),car_reset:T('Машина сброшена'),handover_request:T('Запрос отправлен на экран получателя'),handover_accept:T('Получение подтверждено. Машина и ключи за вами'),checkout:T('Выезд записан. Машина за вами'),issue_report:T('Замечание добавлено на карточку'),issue_resolve:T('Замечание закрыто, история сохранена'),keys:T('Место ключей сохранено'),init:T('Начальные данные сохранены'),handover_cancel:T('Передача отменена'),handover_decline:T('Передача отклонена')};
 function runCommand(cmd){
   persist(F.transact(state,cmd));
   ui.flash={car:cmd.carId,t:Date.now()};
@@ -1460,6 +1489,8 @@ document.addEventListener('click',ev=>{
       case 'car-reset-confirm':if(isMgr(role))runCommand({kind:'car_reset',carId:id,actorId:role});break;
       case 'photo-remove':photoSeq++;photoData=null;photoBusy=false;{const prev=$('#f-photo-prev');['#f-photo','#f-photo-cam'].forEach(q=>{const inp=$(q);if(inp)inp.value='';});if(prev)prev.innerHTML='';}break;
       case 'wash':closeSheet();washSheet(id);break;
+      case 'wash_request':closeSheet();washReqSheet(id);break;
+      case 'wash_request_cancel':runCommand({carId:id,actorId:role,kind:'wash_request_cancel'});break;
       case 'odofix':if(isMgr(role))odoFixSheet(id);break;
       case 'place':if(isMgr(role))placeSheet(b.dataset.place);break;
       case 'pick-start':if(isMgr(role)){mapPick=b.dataset.place;closeSheet();if(MV.park)MV.park.auto=true;view='park';render();const m=document.querySelector('.map[data-map="park"]');if(m)m.scrollIntoView({block:'center',behavior:'smooth'});}break;
@@ -1566,6 +1597,7 @@ document.addEventListener('focusin',e=>{
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter'||e.isComposing||e.target.tagName==='TEXTAREA')return;
   const t=e.target;
+  if(t.closest&&t.closest('#login-form')){if(t.id==='login-username'){e.preventDefault();const pw=$('#login-password');if(pw)pw.focus();}return;}
   if(t.tagName==='INPUT'&&!/^(button|submit|reset|checkbox|radio|file|range|color|hidden)$/i.test(t.type||'text')){
     e.preventDefault();t.blur();
   }
@@ -1631,11 +1663,12 @@ document.addEventListener('submit',e=>{
     if(form==='pin'){const uid=f.dataset.user;api('/api/pin',{id:uid,pin:String(get('pin')||'')}).then(()=>{closeSheet();toast(T('PIN сохранён'));}).catch(err=>reportError(err));return;}
     if(form==='password'){const uid=f.dataset.user;api('/api/password',{id:uid,password:String(get('password')||'')}).then(()=>{if(uid===role){location.reload();return;}closeSheet();toast(T('Пароль сохранён'));}).catch(err=>reportError(err));return;}
     if(form==='odofix'){runCommand({carId:f.dataset.car,actorId:role,kind:'odo_fix',odo:get('odo'),note:get('note')});return;}
+    if(form==='wash_req'){if(!get('carId'))throw new Error(T('Выберите машину.'));runCommand({carId:get('carId'),actorId:role,kind:'wash_request',note:get('note')});return;}
     if(form==='wash'){const w=get('when'),d=w==='yesterday'?dayKey(NOW-DAY):w==='other'?String(get('washDate')||''):dayKey(NOW);
       if(!get('carId'))throw new Error(T('Выберите машину.'));
       runCommand({carId:get('carId'),actorId:role,kind:'wash',washType:get('washType'),washDate:d,note:get('note')});return;}
     if(form==='rename'){persist(F.renameDriver(state,f.dataset.driver,get('name')));closeSheet();toast(T('Имя сохранено'));return;}
-    if(form==='settings'){persist(F.setSettings(state,{shiftEnd:get('shiftEnd'),transferMinutes:get('transferMinutes'),tripHours:get('tripHours')}));closeSheet();toast(T('Напоминания сохранены'));return;}
+    if(form==='settings'){persist(F.setSettings(state,{shiftEnd:get('shiftEnd'),transferMinutes:get('transferMinutes'),tripHours:get('tripHours'),washDays:get('washDays')}));closeSheet();toast(T('Напоминания сохранены'));return;}
     if(form==='service'){persist(F.addServiceRecord(state,{carId:get('carId'),type:get('type'),date:get('date'),odo:get('odo'),cost:get('cost'),place:get('place'),note:get('note'),actorId:role},Date.now()));closeSheet();render();toast(T('Запись сохранена'));return;}
     if(form==='intervals'){const m={};F.SERVICE_TYPES.forEach(t=>{if(t.id!=='other')m[t.id]={km:get('km_'+t.id),months:get('mo_'+t.id)};});persist(F.setIntervals(state,m));closeSheet();toast(T('Интервалы сохранены'));return;}
     if(form==='place'){const pid=f.dataset.place,raw=String(get('geo')||'').trim(),cur=(state.places||{})[pid]||{},g=F.parseGeo(raw),isLink=/^https:\/\//i.test(raw);
