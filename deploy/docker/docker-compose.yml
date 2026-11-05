@@ -1,3 +1,5 @@
+# Секреты — в deploy/docker/.env (создаёт deploy/install.sh, в git не попадает):
+#   DOMAIN=new.autozxc.app   SITE_KEY=…(12 символов)   ADMIN_PIN=…
 services:
   app:
     build:
@@ -6,6 +8,7 @@ services:
     image: garage:latest
     restart: unless-stopped
     user: "1000:1000"
+    env_file: .env
     environment:
       TZ: Europe/Istanbul
       TRUST_PROXY: "1"
@@ -16,6 +19,9 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     expose: ["8080"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
 
   caddy:
     image: caddy:2
@@ -31,6 +37,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
 
 volumes:
   caddy_data:

@@ -55,6 +55,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   await start();
   let accessCookie = '';
   const jar = {};
+  let exportDump = null;
   const pageFetch = p => fetch(B + p, { headers: { Cookie: accessCookie } });
   const call = async (who, p, body, hdr) => {
     const h = Object.assign({ 'X-Garage': '1', Cookie: [accessCookie, jar[who]].filter(Boolean).join('; ') }, body ? { 'Content-Type': 'application/json' } : {}, hdr || {});
@@ -201,6 +202,11 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
     const restoreLogin = await call('a', '/api/login', { id: 'anton', pin: '582614' });
     ok(restoreLogin.status === 200, 'блокировка одного человека не мешает входу Антона');
     await require('./parking.js').api({ ok, F, call, B, dir, jar, accessCookie });
+    console.log('5. Полная выгрузка для переезда');
+    const ex = await call('a', '/api/export');
+    ok(ex.status === 200 && ex.j.format === 'garage-export' && ex.j.kv['state.json'] && ex.j.kv['users.json'] && ex.j.kv['sessions.json'] && Object.keys(ex.j.kv).some(k => k.startsWith('backup:')), 'Антон выгружает полную копию: журнал, пароли, сессии, копии');
+    const exD = await call('d', '/api/export'); ok([401, 404].includes(exD.status), 'водителю полная выгрузка недоступна (' + exD.status + ')');
+    exportDump = ex.j;
     console.log('5а. Смена SITE_KEY (перезапуск только тестового сервера)');
     await stop();
     const rotated = crypto.randomBytes(6).toString('hex');
@@ -227,6 +233,18 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   await stop();
   const st = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
   ok(st.v >= 5, 'журнал сохранён на диск (v=' + st.v + ')');
+  if (exportDump) {
+    const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'garage-import-')), dumpFile = path.join(dir2, 'dump.json');
+    fs.writeFileSync(dumpFile, JSON.stringify(exportDump));
+    const data2 = path.join(dir2, 'data'), ienv = Object.assign({}, process.env, { DATA_DIR: data2, DATABASE_URL: '' });
+    const imp = spawnSync(process.execPath, [path.join(ROOT, 'scripts/import.cjs'), dumpFile], { env: ienv, encoding: 'utf8' });
+    const st2 = JSON.parse(fs.readFileSync(path.join(data2, 'state.json'), 'utf8'));
+    ok(imp.status === 0 && st2.v === exportDump.kv['state.json'].v && fs.existsSync(path.join(data2, 'users.json')) && fs.existsSync(path.join(data2, 'sessions.json')), 'импорт в пустую папку восстанавливает журнал, пароли и сессии');
+    ok(fs.readdirSync(path.join(data2, 'backups')).length > 0, 'импорт кладёт резервные копии в backups/');
+    const again = spawnSync(process.execPath, [path.join(ROOT, 'scripts/import.cjs'), dumpFile], { env: ienv, encoding: 'utf8' });
+    ok(again.status !== 0 && /--force/.test(again.stderr), 'повторный импорт без --force отказывает');
+    fs.rmSync(dir2, { recursive: true, force: true });
+  }
   fs.rmSync(dir, { recursive: true, force: true });
   require('./auth.js')(ok);
 

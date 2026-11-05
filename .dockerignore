@@ -1,0 +1,7 @@
+.git
+node_modules
+data
+lib
+deploy/docker/.env
+*.tar.gz
+*.zip

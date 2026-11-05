@@ -285,6 +285,24 @@ async function backup(tag, snap) {
   while (all.length > BACKUP_KEEP) fs.unlinkSync(path.join(DATA, 'backups', all.shift()));
 }
 
+/* ───── полная выгрузка для переезда (только anton) ───── */
+async function exportAll() {
+  const kv = {};
+  if (PG) {
+    await CHAIN;
+    const r = await PG.query('SELECT k, v FROM garage_kv ORDER BY k');
+    for (const row of r.rows) kv[row.k] = JSON.parse(row.v);
+  } else {
+    for (const n of fs.readdirSync(DATA)) {
+      if (/^(state|users|sessions)\.json$/.test(n) || n.startsWith('photo:') || n.startsWith('backup:')) kv[n] = JSON.parse(fs.readFileSync(file(n), 'utf8'));
+    }
+    for (const n of fs.readdirSync(path.join(DATA, 'backups'))) {
+      const m = /^(state-.*)\.json$/.exec(n); if (m) kv['backup:' + m[1]] = JSON.parse(fs.readFileSync(path.join(DATA, 'backups', n), 'utf8'));
+    }
+  }
+  return { format: 'garage-export', version: 1, exportedAt: new Date().toISOString(), v: DB.v, kv };
+}
+
 /* ───── страница и статика ───── */
 const PUB = path.join(ROOT, 'public');
 const ALLOW_FRAME = process.env.ALLOW_FRAME === '1';          /* только для превью в редакторе Replit */
@@ -427,6 +445,12 @@ const server = http.createServer(async (req, res) => {
         log('password set', id, 'by', me.id);
         return send(res, 200, { ok: true }, id === me.id ? { 'Set-Cookie': cookie('', 0) } : {});
       } catch (e) { return send(res, 422, { error: e.message }); }
+    }
+    if (req.method === 'GET' && p === '/api/export') {
+      if (me.id !== 'anton') return send(res, 404, { error: 'Не найдено' });
+      const dump = await mutate(() => exportAll());
+      log('audit', JSON.stringify({ user: me.id, op: 'export', keys: Object.keys(dump.kv).length }));
+      return send(res, 200, JSON.stringify(dump), { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="garage-export-' + new Date().toISOString().slice(0, 10) + '.json"', 'Cache-Control': 'no-store' });
     }
     if (req.method === 'GET' && p === '/api/backup') {
       if (!me.mgr) return send(res, 403, { error: 'Только для руководства.' });

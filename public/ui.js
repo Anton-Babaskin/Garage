@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=36;
+const APP_VERSION=37;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -1366,6 +1366,7 @@ function moreSheet(){
     it('go',' data-to="service"','wrench',T('ТО'),T('Техобслуживание, страховки, техосмотр'),view==='service')+
     it('go',' data-to="wash"','drop',T('Мойки'),T('Когда мыли машины, химчистка'),view==='wash')+
     it('table','','table',T('Журнал таблицей'),T('Все записи одной таблицей, выгрузка в Google Таблицы'))+
+    (SRV&&role==='anton'?it('export-all','','download',T('Скачать полную копию'),T('Все данные, пароли и фото — для переезда на свой сервер')):'')+
     (SRV&&role==='anton'?it('server-reset','','trash',T('Начать с чистого листа'),T('Сбросить журнал, сохранив пользователей и настройки')):'')+
     '<div class="more-sep"></div>'+
     it('lang','','globe',LANG==='tr'?'Русский':'Türkçe',T('Сменить язык'))+
@@ -1537,6 +1538,7 @@ document.addEventListener('click',ev=>{
       case 'copy-link':{const inp=$('#f-link');try{navigator.clipboard.writeText(inp.value).then(()=>toast(T('Ссылка скопирована')),()=>{inp.focus();inp.select();});}catch(e){inp.focus();inp.select();}break;}
       case 'about':aboutSheet();break;
       case 'server-reset':if(role==='anton')serverResetSheet();break;
+      case 'export-all':if(role==='anton'){closeSheet();toast(T('Готовим копию…'));api('/api/export').then(j=>saveFile('garage-export-'+dayKey(NOW)+'.json',JSON.stringify(j),'application/json')).catch(err=>reportError(err));}break;
       case 'settings':if(isMgr(role))settingsSheet();break;
       case 'details':if(isMgr(role))detailsSheet(id);break;
       case 'rename':if(isMgr(role))renameSheet(b.dataset.driver);break;

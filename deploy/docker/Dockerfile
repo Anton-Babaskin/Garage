@@ -5,6 +5,7 @@ RUN apk add --no-cache tzdata && mkdir -p /data && chown node:node /data
 WORKDIR /app
 COPY --chown=node:node package.json server.js core.js ./
 COPY --chown=node:node public ./public
+COPY --chown=node:node scripts/import.cjs ./scripts/import.cjs
 RUN npm install --omit=dev --no-audit --no-fund
 USER node
 EXPOSE 8080

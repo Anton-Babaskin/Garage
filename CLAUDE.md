@@ -45,21 +45,21 @@
 
 ## Текущее состояние (2026-11-03)
 
-- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (в `main` уже v36 — ждёт ↻ → Sync Changes → Republish).
+- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (в `main` уже v37 — ждёт ↻ → Sync Changes → Republish).
 - Код на GitHub: `Anton-Babaskin/garage`, ветка `main` опережает прод. Тесты зелёные.
 - Решение владельца: **уходим с Replit на свой сервер** (VPS или виртуалка, Ubuntu 24.04).
 
 ## План переезда (делать по шагам, у владельца спрашивать подтверждение)
 
 **A. Код (в репозитории):**
-1. `GET /api/export` — только `anton`: JSON со ВСЕМИ записями хранилища (`state.json`, `users.json`, `sessions.json`, `photo:*`, `backup:*`). Пункт «Скачать полную копию» в «Ещё» у Антона (RU/TR).
-2. `scripts/import.js <файл>` — заливает выгрузку в текущее хранилище (файлы `DATA_DIR` или PG). В непустое — только с `--force`.
+1. ✅ v37. `GET /api/export` — только `anton`: JSON со ВСЕМИ записями хранилища (`state.json`, `users.json`, `sessions.json`, `photo:*`, `backup:*`). Пункт «Скачать полную копию» в «Ещё» у Антона (RU/TR).
+2. ✅ v37. `scripts/import.cjs <файл>` (`.cjs`, т.к. `scripts/package.json` от шаблона — ESM); на сервере — `deploy/import.sh <файл>` — заливает выгрузку в текущее хранилище (файлы `DATA_DIR` или PG). В непустое — только с `--force`.
 3. Баг синхронизации: `srvPull`/`srvStartPoll` в `public/ui.js` обновляют state, но не перерисовывают открытую шторку/форму; после `odo_fix`/`car_reset` у другого телефона остаются старые данные. Исправить без затирания введённого водителем; при закрытии шторки — перерисовать фон.
-4. Убрать мусор шаблона Replit: `lib/`, `pnpm-*`, `tsconfig*`, `scripts/src`, `scripts/package.json` (проверить, что `npm test` и сервер не зависят). `.gitignore`: + `initial-pins.txt`.
-5. `deploy/docker`: добавить `SITE_KEY`, `ADMIN_PIN` через `.env`; хранилище — файлы в `./data` (PG не нужен). Caddy уже даёт HTTPS.
+4. Убрать мусор шаблона Replit — **после** переезда, чтобы не сломать Replit: `lib/`, `pnpm-*`, `tsconfig*`, `scripts/src`, `scripts/package.json` (проверить, что `npm test` и сервер не зависят). `.gitignore`: + `initial-pins.txt`.
+5. ✅ v37. `deploy/docker` + `deploy/install.sh` (клон в /opt/garage, спрашивает DOMAIN/SITE_KEY/ADMIN_PIN → deploy/docker/.env): добавить `SITE_KEY`, `ADMIN_PIN` через `.env`; хранилище — файлы в `./data` (PG не нужен). Caddy уже даёт HTTPS.
 6. Автодеплой: push в `main` → сервер обновляется (GitHub Actions по SSH или self-hosted runner) — выбрать с владельцем.
 
-**B. Сервер:**
+**B. Сервер:** виртуалка на Proxmox (Hetzner, внешний IP 46.4.100.22), 80/443 пробрасываются с хоста на ВМ (DNAT). SSH к ВМ — через хост (`ssh -J root@46.4.100.22 user@<IP ВМ>`).
 1. Docker + compose, клон репозитория, `.env` с секретами (владелец вводит сам).
 2. Тест на поддомене `new.autozxc.app` (A-запись → IP сервера). **Не по голому IP:** `.app` — только HTTPS (HSTS preload), cookie `Secure`.
 3. Перенос копии данных (export с Replit → import), проверка с телефонов.
