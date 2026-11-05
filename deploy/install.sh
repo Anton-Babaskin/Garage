@@ -23,11 +23,12 @@ fi
 cd "$DIR/deploy/docker"
 
 if [ ! -f .env ]; then
-  say "Настройки (один раз)"
+  say "Настройки (один раз) — раскладка EN"
+  stty iutf8 </dev/tty 2>/dev/null || true   # Backspace корректно стирает и кириллицу
   read -rp "Домен для сайта (для теста: new.autozxc.app): " DOMAIN </dev/tty
   read -rp "SITE_KEY — 12 латинских букв/цифр, как в Replit → Secrets: " SITE_KEY </dev/tty
   read -rsp "ADMIN_PIN — PIN Антона, как в Replit → Secrets (ввод скрыт): " ADMIN_PIN </dev/tty; echo
-  clean() { printf '%s' "$1" | tr -d '\r\t \n'; }
+  clean() { printf '%s' "$1" | LC_ALL=C tr -cd '\041-\176'; }   # только видимые латинские символы: мусор от раскладки и Backspace отбрасывается
   DOMAIN="$(clean "$DOMAIN" | tr 'A-Z' 'a-z')"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN%/}"
   SITE_KEY="$(clean "$SITE_KEY")"; ADMIN_PIN="$(clean "$ADMIN_PIN")"
   [[ "$DOMAIN" =~ ^[a-z0-9.-]+$ ]] || { echo "Неверный домен: '$DOMAIN'"; exit 1; }
