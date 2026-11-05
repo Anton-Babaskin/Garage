@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=35;
+const APP_VERSION=36;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -496,7 +496,6 @@ function viewMine(){
         (can?'<span class="d-row-go">'+T('Взять')+'</span>':'')+'</button>';
     }).join('')+'</div>';
   }
-  out+='<div class="d-two d-wash"><button class="btn btn-lg" data-act="wash_request">'+ic('drop')+T('Нужна мойка')+'</button><button class="btn btn-lg" data-act="wash">'+ic('check')+T('Помыта')+'</button></div>';
   out+='<button class="d-link" data-act="mylog">'+T('Мои записи')+'</button>';
   return '<div class="d-wrap">'+out+'</div>';
 }

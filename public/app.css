@@ -1161,7 +1161,6 @@ body.login main{padding:0}
 .w-wait-row:first-of-type{border-top:0}
 .w-wait-main{display:grid;gap:2px;min-width:0}.w-wait-main small{color:var(--muted);font-size:14px}
 .w-wait-acts{display:flex;gap:8px;align-items:center}
-.d-wash.d-two{margin-top:14px}
 .w-month{font-size:14px;color:var(--ink-2)}
 .w-add{width:40px;height:40px;border-radius:50%;background:var(--sunken);display:grid;place-items:center}
 .w-add .ic{width:20px;height:20px}
