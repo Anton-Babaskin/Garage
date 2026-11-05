@@ -27,7 +27,10 @@ if [ ! -f .env ]; then
   read -rp "Домен для сайта (для теста: new.autozxc.app): " DOMAIN </dev/tty
   read -rp "SITE_KEY — 12 латинских букв/цифр, как в Replit → Secrets: " SITE_KEY </dev/tty
   read -rsp "ADMIN_PIN — PIN Антона, как в Replit → Secrets (ввод скрыт): " ADMIN_PIN </dev/tty; echo
-  [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "Неверный домен"; exit 1; }
+  clean() { printf '%s' "$1" | tr -d '\r\t \n'; }
+  DOMAIN="$(clean "$DOMAIN" | tr 'A-Z' 'a-z')"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN%/}"
+  SITE_KEY="$(clean "$SITE_KEY")"; ADMIN_PIN="$(clean "$ADMIN_PIN")"
+  [[ "$DOMAIN" =~ ^[a-z0-9.-]+$ ]] || { echo "Неверный домен: '$DOMAIN'"; exit 1; }
   [[ "$SITE_KEY" =~ ^[A-Za-z0-9]{12}$ ]] || { echo "SITE_KEY должен быть ровно 12 латинских букв/цифр"; exit 1; }
   [ -n "$ADMIN_PIN" ] || { echo "ADMIN_PIN пустой"; exit 1; }
   ( umask 077; printf 'DOMAIN=%s\nSITE_KEY=%s\nADMIN_PIN=%s\n' "$DOMAIN" "$SITE_KEY" "$ADMIN_PIN" > .env )
