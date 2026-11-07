@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=37;
+const APP_VERSION=38;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -113,6 +113,7 @@ const ICON={
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
   chev:'<path d="M6 9l6 6 6-6"/>',
   plus:'<path d="M12 5v14M5 12h14"/>',
+  house:'<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
   camera:'<path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.5"/>',
   image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
   edit:'<path d="m15 4 5 5L9 20H4v-5z"/>',
@@ -201,6 +202,7 @@ function sign(loc,cls){
   const l=F.location(loc);
   if(!l)return '<span class="sign z-other'+c+'" aria-hidden="true">?</span>';
   if(l.id==='service')return '<span class="sign z-service'+c+'" aria-hidden="true">'+ic('wrench')+'</span>';
+  if(l.id==='home')return '<span class="sign z-home'+c+'" aria-hidden="true">'+ic('house')+'</span>';
   return '<span class="sign z-'+l.tone+c+'" aria-hidden="true">'+esc(l.sign)+'</span>';
 }
 function placeHTML(loc,spot){

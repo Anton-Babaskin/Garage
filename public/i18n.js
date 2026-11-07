@@ -701,6 +701,7 @@ var TRD={
 "Сейчас пусто": "Şu an boş",
 "Сейчас: ": "Şu an: ",
 "Сервис": "Servis",
+"Дома": "Evde",
 "Сервис и другие места": "Servis ve diğer yerler",
 "Скачать CSV": "CSV indir",
 "Скачать файл для Excel": "Excel dosyasını indir",

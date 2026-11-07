@@ -3,7 +3,7 @@
 /* Ядро учёта: логика из версии ChatGPT (событийный журнал + проверки), дополнено цветами машин, сигналами по пробегу без записи и статистикой. */
 const CARS=[{id:'bmw',name:'BMW',index:'01',color:'#6B737C'},{id:'audi',name:'Audi',index:'02',color:'#15161A'},{id:'fiat',name:'Fiat',index:'03',color:'#556270'},{id:'skoda',name:'Škoda',index:'04',color:'#34373C'}];
 const TEAM=[T('Эркин'),T('Озгюр'),T('Мурат'),T('Водитель 4')];
-const LOCATIONS=[{id:'vadi',name:T('Вади'),tone:'vadi',sign:T('В')},{id:'teras',name:T('Терас'),tone:'teras',sign:T('Т')},{id:'chamly',name:T('Чамлы'),tone:'camli',sign:T('Ч')},{id:'service',name:T('Сервис'),tone:'service',sign:''},{id:'other',name:T('Другое'),tone:'other',sign:'?'}];
+const LOCATIONS=[{id:'vadi',name:T('Вади'),tone:'vadi',sign:T('В')},{id:'teras',name:T('Терас'),tone:'teras',sign:T('Т')},{id:'chamly',name:T('Чамлы'),tone:'camli',sign:T('Ч')},{id:'service',name:T('Сервис'),tone:'service',sign:''},{id:'home',name:T('Дома'),tone:'home',sign:''},{id:'other',name:T('Другое'),tone:'other',sign:'?'}];
 const PARKINGS=['vadi','teras','chamly'];
 /* Виды моек: добавить новый — строка здесь + перевод в i18n.js */
 const WASH_TYPES=[{id:'wash',name:T('Мойка')},{id:'interior',name:T('Химчистка')},{id:'full',name:T('Мойка + химчистка')},{id:'other',name:T('Другое')}];

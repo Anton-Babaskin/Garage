@@ -4,7 +4,7 @@
   --ink:#15161A; --ink-2:#55585F; --ink-3:#85888E;
   --line:#E3E1DB; --line-2:#CCCAC3;
   --signal:#FFC414; --signal-2:#EDB300; --signal-ink:#15161A; --signal-soft:#FFF0C0; --signal-line:rgba(21,22,26,.32);
-  --z-vadi:#2F66DB; --z-teras:#0F8F67; --z-camli:#D95A1B; --z-service:#6A55C8; --z-other:#6E7279; --on-zone:#FFFFFF;
+  --z-vadi:#2F66DB; --z-teras:#0F8F67; --z-camli:#D95A1B; --z-service:#6A55C8; --z-home:#B4581F; --z-other:#6E7279; --on-zone:#FFFFFF;
   --warn:#8F5400; --warn-bg:#FAEACB; --crit:#B42121; --crit-bg:#F8DEDA; --info:#2A5CC9; --info-bg:#E1E9FA; --ok:#0D7444; --ok-bg:#D8EEE1;
   --status-driving:#F59E0B; --status-parked:#16A34A; --status-pending:#2563EB; --status-none:#8A8E94;
   --keys-driver:#F59E0B;
@@ -28,7 +28,7 @@
   --ink:#EDEDEA; --ink-2:#A6A9AF; --ink-3:#74777D;
   --line:#272A2F; --line-2:#383B42;
   --signal:#FFC414; --signal-2:#FFD24D; --signal-ink:#15161A; --signal-soft:#382D0C; --signal-line:rgba(21,22,26,.35);
-  --z-vadi:#4E81EE; --z-teras:#1FA779; --z-camli:#EC7334; --z-service:#8C78EC; --z-other:#80848B;
+  --z-vadi:#4E81EE; --z-teras:#1FA779; --z-camli:#EC7334; --z-service:#8C78EC; --z-home:#E08A4C; --z-other:#80848B;
   --warn:#F0B14A; --warn-bg:#35280E; --crit:#FF7C72; --crit-bg:#3A1716; --info:#7FA6F6; --info-bg:#172440; --ok:#46C98D; --ok-bg:#112B1E;
   --status-driving:#F59E0B; --status-parked:#34D399; --status-pending:#60A5FA; --status-none:#A1A1AA;
   --keys-driver:#F59E0B;
@@ -117,7 +117,7 @@ main{padding-block:22px calc(var(--tabbar-h) + 36px + env(safe-area-inset-bottom
 .sign.lg{width:52px;height:52px;border-radius:11px;font-size:23px}
 .sign.lg .ic{width:28px;height:28px}
 .sign.road{background:var(--signal);color:var(--signal-ink)}
-.z-vadi{--zc:var(--z-vadi)} .z-teras{--zc:var(--z-teras)} .z-camli{--zc:var(--z-camli)} .z-service{--zc:var(--z-service)} .z-other{--zc:var(--z-other)}
+.z-vadi{--zc:var(--z-vadi)} .z-teras{--zc:var(--z-teras)} .z-camli{--zc:var(--z-camli)} .z-service{--zc:var(--z-service)} .z-home{--zc:var(--z-home)} .z-other{--zc:var(--z-other)}
 .place{display:inline-flex;align-items:center;gap:7px;min-width:0;vertical-align:middle}
 
 /* filter chips */
