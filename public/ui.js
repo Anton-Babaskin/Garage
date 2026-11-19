@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=38;
+const APP_VERSION=39;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -166,6 +166,7 @@ const PROFILES={
     pillars:[78,112],py:[24,41],wheels:[[157,64,13],[49,64,13]],ground:78,
     head:'M182 45C187 45 191 47 193 49L191 51L181 49Z',tail:'M9 46L26 44L26 48L9 50Z',extra:'',trim:true,handles:[96,130],hy:46}
 };
+PROFILES.audi2=PROFILES.audi;
 function profileSVG(P,col,edge,cls){
   const wheel=w=>'<circle cx="'+w[0]+'" cy="'+w[1]+'" r="'+w[2]+'" fill="#17181B"/><circle cx="'+w[0]+'" cy="'+w[1]+'" r="'+(w[2]*.58).toFixed(1)+'" fill="#B9BEC5"/><circle cx="'+w[0]+'" cy="'+w[1]+'" r="'+(w[2]*.22).toFixed(1)+'" fill="#5B6068"/>';
   const pil=P.pillars.map(x=>'<path d="M'+x+' '+P.py[0]+'L'+x+' '+P.py[1]+'" stroke="'+col+'" stroke-width="3.5"/>').join('');

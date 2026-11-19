@@ -27,7 +27,7 @@
 
 - Водители: Эркин (`erkin`/d1), Озгюр (`ozgur`/d2), Мурат (`murat`/d3), Водитель 4 (`driver4`/d4).
 - Руководство: Руководитель (`manager`), Дарья (`darya`), Антон (`anton`, PIN из секрета `ADMIN_PIN`).
-- Машины: BMW iX 34 ML 5050, Audi A6 34 HRZ 549, Fiat Egea 34 GRA 342, Škoda Superb L&K 34 MDH 491.
+- Машины: BMW iX 34 ML 5050, Audi A6 34 HRZ 549, Fiat Egea 34 GRA 342, Škoda Superb L&K 34 MDH 491, Audi MPB (A6 2024, чёрная) 34 MPB 59 — id `audi2`, добавлена в v39; фото = зеркальное фото первой Audi с новым номером.
 - Паркинги: Вади, Терас, Чамлы (+ Сервис, Другое).
 - **RU + TR обязательно** для любого видимого текста: `T('…')` + перевод в `public/i18n.js`.
 
@@ -45,7 +45,7 @@
 
 ## Текущее состояние (2026-11-03)
 
-- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (в `main` уже v38 — ждёт ↻ → Sync Changes → Republish).
+- Прод: **Replit**, Reserved VM ($15/мес), PostgreSQL Replit, домен `autozxc.app`, версия **v33** (в `main` уже v39 — ждёт ↻ → Sync Changes → Republish).
 - Код на GitHub: `Anton-Babaskin/garage`, ветка `main` опережает прод. Тесты зелёные.
 - Решение владельца: **уходим с Replit на свой сервер** (VPS или виртуалка, Ubuntu 24.04).
 

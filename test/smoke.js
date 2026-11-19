@@ -30,7 +30,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { fails+
   ctx.globalThis = ctx; vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'core.js'), 'utf8'), ctx);
   const F = ctx.FleetCore;
-  try { const s = F.demoState(); ok(F.project(s).cars.length === 4, 'демо-журнал собирается, 4 машины'); } catch (e) { ok(false, 'ядро: ' + e.message); }
+  try { const s = F.demoState(); ok(F.project(s).cars.length === F.CARS.length && F.project(s).cars.some(c => c.id === 'audi2' && c.plate === '34 MPB 59'), 'демо-журнал собирается, ' + F.CARS.length + ' машин, новая Audi 34 MPB 59 на месте'); } catch (e) { ok(false, 'ядро: ' + e.message); }
   try { require('./first-trip.js')(ok, F); } catch (e) { ok(false, 'первый выезд: ' + e.message); }
   try { await require('./mobile-forms.js')(ok); } catch (e) { ok(false, 'мобильные формы: ' + e.message); }
   try { require('./parking.js').core(ok, F); } catch (e) { ok(false, 'паркинг и сброс: ' + e.message); }

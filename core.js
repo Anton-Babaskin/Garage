@@ -1,7 +1,7 @@
 (function(root){
 'use strict';
 /* Ядро учёта: логика из версии ChatGPT (событийный журнал + проверки), дополнено цветами машин, сигналами по пробегу без записи и статистикой. */
-const CARS=[{id:'bmw',name:'BMW',index:'01',color:'#6B737C'},{id:'audi',name:'Audi',index:'02',color:'#15161A'},{id:'fiat',name:'Fiat',index:'03',color:'#556270'},{id:'skoda',name:'Škoda',index:'04',color:'#34373C'}];
+const CARS=[{id:'bmw',name:'BMW',index:'01',color:'#6B737C'},{id:'audi',name:'Audi',index:'02',color:'#15161A'},{id:'fiat',name:'Fiat',index:'03',color:'#556270'},{id:'skoda',name:'Škoda',index:'04',color:'#34373C'},{id:'audi2',name:'Audi MPB',index:'05',color:'#15161A'}];
 const TEAM=[T('Эркин'),T('Озгюр'),T('Мурат'),T('Водитель 4')];
 const LOCATIONS=[{id:'vadi',name:T('Вади'),tone:'vadi',sign:T('В')},{id:'teras',name:T('Терас'),tone:'teras',sign:T('Т')},{id:'chamly',name:T('Чамлы'),tone:'camli',sign:T('Ч')},{id:'service',name:T('Сервис'),tone:'service',sign:''},{id:'home',name:T('Дома'),tone:'home',sign:''},{id:'other',name:T('Другое'),tone:'other',sign:'?'}];
 const PARKINGS=['vadi','teras','chamly'];
@@ -145,7 +145,7 @@ function project(state){
   if(!state||state.version!==1||!Array.isArray(state.drivers)||state.drivers.length!==4||!Array.isArray(state.events))fail(T('Не удалось прочитать данные.'));
   if(new Set(state.drivers.map(d=>d.id)).size!==4||state.drivers.some(d=>!/^d[1-4]$/.test(d.id)||typeof d.name!=='string'||!d.name.trim()))fail(T('Некорректный список водителей.'));
   settingsOf(state);
-  const freshCar=meta=>{const det=(state.carDetails&&state.carDetails[meta.id])||{};return {...meta,model:String(det.model||''),plate:String(det.plate||''),photo:String(det.photo||''),color:HEX.test(det.color||'')?det.color:meta.color,hasPhoto:!!det.hasPhoto,status:'unconfigured',odo:null,location:null,spot:'',currentDriverId:null,lastPark:null,trip:null,lastTrip:null,updatedAt:null,pendingTransfer:null,keys:{kind:'unknown'},issues:[],lastOdoAt:null,resetIndex:-1};};
+  const freshCar=meta=>{const det=(state.carDetails&&state.carDetails[meta.id])||DEMO_DETAILS[meta.id]||{};return {...meta,model:String(det.model||''),plate:String(det.plate||''),photo:String(det.photo||''),color:HEX.test(det.color||'')?det.color:meta.color,hasPhoto:!!det.hasPhoto,status:'unconfigured',odo:null,location:null,spot:'',currentDriverId:null,lastPark:null,trip:null,lastTrip:null,updatedAt:null,pendingTransfer:null,keys:{kind:'unknown'},issues:[],lastOdoAt:null,resetIndex:-1};};
   const cars=CARS.map(freshCar);
   const trips=[],audit=[],seen=new Set(),issues=new Map();
   for(const event of state.events){
@@ -327,7 +327,7 @@ function stats(state,days,now){
   periodSegs.forEach(s=>{const k=key(Date.parse(s.endAt));if(k in idx)daily[idx[k]].km+=s.distance;});
   return {cars,drivers,daily,logged:sum(cars.map(c=>c.logged)),unlogged:sum(cars.map(c=>c.unlogged)),trips:sum(cars.map(c=>c.trips))};
 }
-const DEMO_DETAILS={bmw:{model:'iX',plate:'34 ML 5050',color:''},audi:{model:'A6',plate:'34 HRZ 549',color:''},fiat:{model:'Egea',plate:'34 GRA 342',color:''},skoda:{model:'Superb L&K',plate:'34 MDH 491',color:''}};
+const DEMO_DETAILS={bmw:{model:'iX',plate:'34 ML 5050',color:''},audi:{model:'A6',plate:'34 HRZ 549',color:''},fiat:{model:'Egea',plate:'34 GRA 342',color:''},skoda:{model:'Superb L&K',plate:'34 MDH 491',color:''},audi2:{model:'A6',plate:'34 MPB 59',color:''}};
 function driverStats(state,did,days,now){
   const p=project(state),end=now==null?Date.now():Number(new Date(now)),start=end-days*864e5;
   const segs=[];

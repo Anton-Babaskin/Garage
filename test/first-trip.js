@@ -11,7 +11,7 @@ module.exports = (ok, F) => {
   const car = (p, id = 'bmw') => p.cars.find(c => c.id === id);
   let p = act({ kind: 'checkout', carId: 'bmw', actorId: 'd1', odo: 0 });
   ok(car(p).status === 'driving' && car(p).odo === 0 && car(p).trip.startOdo === 0 && car(p).keys.driverId === 'd1', 'водитель начинает первую поездку с 0 и получает ключи');
-  ok(p.audit[0].odoGap === 0 && p.cars.filter(c => c.status === 'unconfigured').length === 3, 'первый выезд не создаёт ложный пробег без записи и не меняет другие машины');
+  ok(p.audit[0].odoGap === 0 && p.cars.filter(c => c.status === 'unconfigured').length === F.CARS.length - 1, 'первый выезд не создаёт ложный пробег без записи и не меняет другие машины');
   ok(!rejects({ kind: 'checkout', carId: 'audi', actorId: 'd1', odo: 0 }), 'водитель может взять вторую машину одновременно');
   ok(rejects({ kind: 'checkout', carId: 'bmw', actorId: 'd2', odo: 0 }), 'другой водитель не может взять занятую машину');
   ok(rejects({ kind: 'checkout', carId: 'audi', actorId: 'anton', odo: 0 }), 'руководство не становится водителем');
@@ -45,7 +45,7 @@ module.exports = (ok, F) => {
     vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), ui);
   }
   const list = ui.viewMine(), buttons = list.match(/<button[^>]*data-act="checkout"[^>]*>/g) || [];
-  ok(buttons.length === 4 && buttons.every(b => !b.includes('disabled')), 'на экране водителя все четыре новые машины доступны для взятия');
+  ok(buttons.length === F.CARS.length && buttons.every(b => !b.includes('disabled')), 'на экране водителя все новые машины доступны для взятия (' + buttons.length + ')');
   ok(ui.carActions(ui.carOf('bmw')).includes('data-act="checkout"'), 'в карточке новой машины тоже доступно «Взять машину»');
   ui.actionSheet('checkout', 'bmw');
   ok(!sheet.includes('class="ctx"') && /id="f-odo"[^>]*value="0"/.test(sheet) && sheet.includes('data-kind="checkout"') && !sheet.includes('от руководителя'), 'форма первого выезда подставляет 0 без дублирующей плашки и требования руководства');
@@ -60,7 +60,7 @@ module.exports = (ok, F) => {
     two = F.transact(two, { kind: 'checkout', carId: 'fiat', actorId: 'd1', odo: 0 });
     Object.assign(ui, { state: two, P: F.project(two), role: 'd1', attentionItems: () => [], statusPill: () => '', plateHTML: () => '', flashCls: () => '', ago: () => '' });
     const scr = ui.viewMine();
-    ok((scr.match(/data-act="park"/g) || []).length === 2 && scr.includes('Машины у вас') && scr.includes('Взять ещё машину') && (scr.match(/data-act="checkout"/g) || []).length === 2,
+    ok((scr.match(/data-act="park"/g) || []).length === 2 && scr.includes('Машины у вас') && scr.includes('Взять ещё машину') && (scr.match(/data-act="checkout"/g) || []).length === F.CARS.length - 2,
       'экран водителя с двумя машинами: две карточки «Поставить» и список «Взять ещё машину»');
     [ui.state, ui.P, ui.role] = saved;
   }
