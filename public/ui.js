@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const F=window.FleetCore;
-const APP_VERSION=40;
+const APP_VERSION=41;
 /* фото ваших машин: вырезаны из присланных снимков */
 const CAR_PHOTOS=window.CAR_PHOTOS||{};
 const KEY='garage-team-v2',LEGACY='garage-team-demo-v1',ROLE_KEY='garage-team-role-v1';
@@ -244,7 +244,7 @@ function issueChips(c,clickable){
 }
 function keysText(c){
   const k=c.keys;if(!k||k.kind==='unknown')return T('Не отмечено');
-  if(k.kind==='driver')return T('У водителя: ')+nameOf(k.driverId);
+  if(k.kind==='driver')return nameOf(k.driverId);
   return k.kind==='security'?T('На охране'):T('В офисе');
 }
 function carOf(id){return P.cars.find(c=>c.id===id);}
@@ -419,9 +419,9 @@ function bossWhere(c){
 }
 function bossKeys(c){
   if(c.status==='unconfigured')return '—';
-  if(c.status==='driving')return '<b class="keys-driver">'+T('У водителя: ')+esc(nameOf(c.currentDriverId))+'</b>';
+  if(c.status==='driving')return '<b class="keys-driver">'+esc(nameOf(c.currentDriverId))+'</b>';
   const k=c.keys;if(!k||k.kind==='unknown')return T('Не отмечено');
-  if(k.kind==='driver')return '<b class="b-alert keys-driver">'+T('У водителя: ')+esc(nameOf(k.driverId))+'</b>';
+  if(k.kind==='driver')return '<b class="b-alert keys-driver">'+esc(nameOf(k.driverId))+'</b>';
   return k.kind==='security'?T('На охране'):T('В офисе');
 }
 function bossRow(c){
